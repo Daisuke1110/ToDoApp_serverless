@@ -1,0 +1,12 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "NewToDoApp"
+resolve_s3 = true
+s3_prefix = "NewToDoApp"
+region = "ap-northeast-3"
+profile = "serverless-user"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "UserId=\"me\""
+image_repositories = []

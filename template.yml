@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 10
+    MemorySize: 256
+
+Parameters:
+  UserId:
+    Type: String
+    Default: me
+    Description: Single user ID for personal use
+
+Resources:
+  TodoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: task_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+        - AttributeName: task_id
+          KeyType: RANGE
+      TableClass: STANDARD
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins: ["*"]
+        AllowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
+        AllowHeaders: ["*"]
+      Auth:
+        EnableIamAuthorizer: true
+        DefaultAuthorizer: AWS_IAM # ← ここがポイント（IAM ではなく AWS_IAM）
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: backend/
+      Handler: handler.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TodoTable
+          USER_ID: !Ref UserId
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TodoTable
+      Events:
+        AnyRoute:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+
+  DueCheck:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: backend/
+      Handler: duecheck.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TodoTable
+          USER_ID: !Ref UserId
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref TodoTable
+        - DynamoDBWritePolicy:
+            TableName: !Ref TodoTable
+      Events:
+        Daily0900JST:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 0 * * ? *)
+
+Outputs:
+  ApiEndpoint:
+    Description: Invoke URL (HTTP API - requires AWS SigV4)
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  TableName:
+    Value: !Ref TodoTable

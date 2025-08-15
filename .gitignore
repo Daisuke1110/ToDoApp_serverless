@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+.env*
+*.sqlite*
+
+# AWS SAM
+.aws-sam/
+.elasticbeanstalk/
+*.zip
+
+# OS / エディタ
+.DS_Store
+Thumbs.db
+
+# AWS 認証情報ファイル
+*.pem
+*.key
+*.log
+
+# Node.js
+node_modules/
