@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 from flask import Flask, request, jsonify
 import boto3
 from botocore.exceptions import ClientError
+from flask_cors import CORS
+
+CORS(app)
 
 TABLE_NAME = os.environ.get("TABLE_NAME", "todo")
 USER_ID = os.environ.get("USER_ID", "me")  # 個人利用なので固定

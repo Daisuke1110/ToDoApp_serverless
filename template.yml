@@ -6,6 +6,7 @@ Globals:
     Runtime: python3.12
     Timeout: 10
     MemorySize: 256
+    Tracing: Active
 
 Parameters:
   UserId:
@@ -29,6 +30,11 @@ Resources:
         - AttributeName: task_id
           KeyType: RANGE
       TableClass: STANDARD
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
 
   HttpApi:
     Type: AWS::Serverless::HttpApi
@@ -61,6 +67,12 @@ Resources:
             Path: /{proxy+}
             Method: ANY
 
+  ApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ApiFunction}"
+      RetentionInDays: 30
+
   DueCheck:
     Type: AWS::Serverless::Function
     Properties:
@@ -80,6 +92,12 @@ Resources:
           Type: Schedule
           Properties:
             Schedule: cron(0 0 * * ? *)
+
+  DueCheckLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${DueCheck}"
+      RetentionInDays: 30
 
 Outputs:
   ApiEndpoint:

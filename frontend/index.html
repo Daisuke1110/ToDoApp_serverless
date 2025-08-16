@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ToDo (Serverless)</title>
+<style>
+  :root {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+      "Apple Color Emoji", "Segoe UI Emoji";
+  }
+  body {
+    margin: 24px;
+    max-width: 800px;
+  }
+  h1 {
+    margin: 0 0 16px;
+  }
+  .card {
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    padding: 16px;
+    margin: 12px 0;
+  }
+  label {
+    font-size: 14px;
+    color: #555;
+  }
+  input[type="text"],
+  input[type="datetime-local"] {
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  button {
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid #ccc;
+    background: #f6f6f6;
+    cursor: pointer;
+  }
+  button:hover {
+    background: #eee;
+  }
+  .row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .tasks {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .tasks li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+  }
+  .muted {
+    color: #777;
+    font-size: 12px;
+  }
+  .status {
+    font-weight: 600;
+    margin-right: 8px;
+  }
+  .right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .badge {
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid #ddd;
+    font-size: 12px;
+  }
+  .error {
+    color: #b00020;
+  }
+</style>
+
+<h1>ToDo (Serverless)</h1>
+
+<div class="card">
+  <div class="row" style="gap: 12px; margin-bottom: 8px">
+    <label for="api">API Base URL</label>
+    <input
+      id="api"
+      type="text"
+      placeholder="https://xxxx.execute-api.ap-northeast-3.amazonaws.com/Prod"
+      style="min-width: 380px"
+    />
+    <button id="save">保存</button>
+    <span id="ping" class="muted"></span>
+  </div>
+  <div class="muted">
+    例:
+    <code>https://abc123.execute-api.ap-northeast-3.amazonaws.com/Prod</code>
+  </div>
+</div>
+
+<div class="card">
+  <form id="form" class="row">
+    <input
+      id="title"
+      type="text"
+      placeholder="タイトル"
+      required
+      style="flex: 1"
+    />
+    <input id="due" type="datetime-local" />
+    <button>追加</button>
+    <span id="msg" class="muted"></span>
+  </form>
+</div>
+
+<ul id="list" class="tasks card"></ul>
+
+<script>
+  const $ = (s) => document.querySelector(s);
+  const LS_KEY = "todo_api_base";
+  let BASE = localStorage.getItem(LS_KEY) || "";
+
+  function setBase(v) {
+    BASE = (v || "").trim().replace(/\/+$/, ""); // 末尾のスラッシュを除去
+    localStorage.setItem(LS_KEY, BASE);
+    $("#api").value = BASE;
+  }
+
+  async function ping() {
+    if (!BASE) {
+      $("#ping").textContent = "";
+      return;
+    }
+    $("#ping").textContent = "接続確認中...";
+    try {
+      const res = await fetch(`${BASE}/health`);
+      if (!res.ok) throw new Error(res.status);
+      const j = await res.json();
+      $("#ping").textContent = `接続OK / ${j.time}`;
+    } catch (e) {
+      $("#ping").textContent = "接続エラー。URLをご確認ください。";
+    }
+  }
+
+  async function load() {
+    if (!BASE) return;
+    const ul = $("#list");
+    ul.innerHTML = "<li>読み込み中...</li>";
+    try {
+      const res = await fetch(`${BASE}/tasks`);
+      const items = await res.json();
+      ul.innerHTML = "";
+      if (!Array.isArray(items) || items.length === 0) {
+        ul.innerHTML = "<li class='muted'>タスクはありません</li>";
+        return;
+      }
+      // 更新日時の降順でソート
+      items.sort((a, b) =>
+        String(b.updated_at).localeCompare(String(a.updated_at))
+      );
+      for (const it of items) {
+        const li = document.createElement("li");
+        const left = document.createElement("div");
+        const right = document.createElement("div");
+        right.className = "right";
+        const dueTxt = it.due_date
+          ? new Date(it.due_date).toLocaleString()
+          : "";
+        left.innerHTML = `<span class="badge">${it.status}</span> ${it.title} <span class="muted">${dueTxt}</span>`;
+
+        const done = document.createElement("button");
+        done.textContent = "done";
+        done.onclick = async () => {
+          await fetch(`${BASE}/tasks/${it.task_id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "done" }),
+          });
+          await load();
+        };
+
+        const del = document.createElement("button");
+        del.textContent = "削除";
+        del.onclick = async () => {
+          await fetch(`${BASE}/tasks/${it.task_id}`, { method: "DELETE" });
+          await load();
+        };
+
+        right.append(done, del);
+        li.append(left, right);
+        ul.append(li);
+      }
+    } catch (e) {
+      $(
+        "#list"
+      ).innerHTML = `<li class="error">読み込みに失敗しました: ${e}</li>`;
+    }
+  }
+
+  $("#save").onclick = async () => {
+    setBase($("#api").value);
+    await ping();
+    await load();
+  };
+  $("#form").onsubmit = async (e) => {
+    e.preventDefault();
+    const title = $("#title").value;
+    const dueLocal = $("#due").value;
+    const dueISO = dueLocal ? new Date(dueLocal).toISOString() : null;
+    try {
+      await fetch(`${BASE}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, due_date: dueISO }),
+      });
+      $("#form").reset();
+      $("#msg").textContent = "追加しました";
+      setTimeout(() => ($("#msg").textContent = ""), 1200);
+      await load();
+    } catch (e) {
+      $("#msg").textContent = "追加に失敗しました";
+    }
+  };
+
+  // init
+  setBase(BASE);
+  ping().then(load);
+</script>
