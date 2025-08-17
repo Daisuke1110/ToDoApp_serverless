@@ -122,14 +122,16 @@
 
 <script>
   const $ = (s) => document.querySelector(s);
-  const LS_KEY = "todo_api_base";
-  let BASE = localStorage.getItem(LS_KEY) || "";
+  // const LS_KEY = "todo_api_base";
+  // let BASE = localStorage.getItem(LS_KEY) || "";
 
-  function setBase(v) {
-    BASE = (v || "").trim().replace(/\/+$/, ""); // 末尾のスラッシュを除去
-    localStorage.setItem(LS_KEY, BASE);
-    $("#api").value = BASE;
-  }
+  // function setBase(v) {
+  //   BASE = (v || "").trim().replace(/\/+$/, ""); // 末尾のスラッシュを除去
+  //   localStorage.setItem(LS_KEY, BASE);
+  //   $("#api").value = BASE;
+  // }
+  // ← 入力不要：API のベースURLを固定値にする（/Prod の有無はあなたの環境どおり）
+  const BASE = "https://wqwkh06vkl.execute-api.ap-northeast-3.amazonaws.com";
 
   async function ping() {
     if (!BASE) {
@@ -201,33 +203,47 @@
       ).innerHTML = `<li class="error">読み込みに失敗しました: ${e}</li>`;
     }
   }
+  //保存ボタンの処理を削除
+  // $("#save").onclick = async () => {
+  //   setBase($("#api").value);
+  //   await ping();
+  //   await load();
+  // };
 
-  $("#save").onclick = async () => {
-    setBase($("#api").value);
-    await ping();
-    await load();
-  };
   $("#form").onsubmit = async (e) => {
     e.preventDefault();
     const title = $("#title").value;
     const dueLocal = $("#due").value;
-    const dueISO = dueLocal ? new Date(dueLocal).toISOString() : null;
+    const dueISO = dueLocal ? new Date(dueLocal).toISOString() : "";
     try {
-      await fetch(`${BASE}/tasks`, {
+      const payload = { title };
+      if (dueISO) payload.due_date = dueISO;
+      const res = await fetch(`${BASE}/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, due_date: dueISO }),
+        body: JSON.stringify(payload),
       });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(`${res.status} ${res.statusText} :: ${t}`);
+      }
       $("#form").reset();
       $("#msg").textContent = "追加しました";
       setTimeout(() => ($("#msg").textContent = ""), 1200);
       await load();
     } catch (e) {
-      $("#msg").textContent = "追加に失敗しました";
+      $("#msg").textContent = `追加に失敗しました: ${e}`;
     }
   };
 
   // init
-  setBase(BASE);
-  ping().then(load);
+  // setBase(BASE);
+  // ping().then(load);
+  // init：上の設定カード（最初の .card）を隠して起動
+  document.addEventListener("DOMContentLoaded", () => {
+    const cards = document.querySelectorAll(".card");
+    if (cards.length) cards[0].style.display = "none";
+    $("#api") && ($("#api").value = BASE); // 万一UIを残した場合の表示だけ合わせる
+    ping().then(load);
+  });
 </script>
