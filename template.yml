@@ -54,6 +54,7 @@ Resources:
       Handler: handler.handler
       Environment:
         Variables:
+          ALLOWED_ORIGINS: "http://localhost:5500,https://$CfDomain"
           TABLE_NAME: !Ref TodoTable
           USER_ID: !Ref UserId
       Policies:

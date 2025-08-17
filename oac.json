@@ -1,0 +1,7 @@
+{
+  "Name": "todo-frontend-oac",
+  "Description": "S3 private origin",
+  "SigningProtocol": "sigv4",
+  "SigningBehavior": "always",
+  "OriginAccessControlOriginType": "s3"
+}

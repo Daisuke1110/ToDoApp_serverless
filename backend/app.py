@@ -8,8 +8,7 @@ import boto3
 from botocore.exceptions import ClientError
 from flask_cors import CORS
 
-CORS(app)
-
+ALLOWED = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5500").split(",")
 TABLE_NAME = os.environ.get("TABLE_NAME", "todo")
 USER_ID = os.environ.get("USER_ID", "me")  # 個人利用なので固定
 
@@ -17,6 +16,7 @@ dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(TABLE_NAME)
 
 app = Flask(__name__)
+CORS(app)  # ← app生成の「後」に置く
 
 
 def now_iso():
@@ -30,7 +30,6 @@ def health():
 
 @app.get("/tasks")
 def list_tasks():
-    # 期限順に並べたいなら後でGSIを追加。まずは単純Query。
     resp = table.query(
         KeyConditionExpression=boto3.dynamodb.conditions.Key("user_id").eq(USER_ID)
     )
@@ -56,9 +55,7 @@ def create_task():
 @app.patch("/tasks/<task_id>")
 def update_task(task_id):
     body = request.get_json(force=True) or {}
-    expr = []
-    names = {}
-    values = {}
+    expr, names, values = [], {}, {}
     for k in ["title", "status", "due_date"]:
         if k in body:
             expr.append(f"#_{k} = :{k}")
@@ -89,3 +86,20 @@ def update_task(task_id):
 def delete_task(task_id):
     table.delete_item(Key={"user_id": USER_ID, "task_id": task_id})
     return "", 204
+
+
+# なくても大抵は動きますが、保険としてCORSヘッダを明示
+@app.after_request
+def add_cors_headers(resp):
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,PATCH,DELETE,OPTIONS"
+    return resp
+
+
+CORS(
+    app,
+    resources={r"/*": {"origins": ALLOWED}},
+    methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type"],
+)

@@ -1,0 +1,1 @@
+{"Version":"2012-10-17","Statement":[{"Action":"s3:GetObject","Condition":{"StringEquals":{"AWS:SourceArn":"arn:aws:cloudfront::554739428451:distribution/E1WGWWOXE27VC7"}},"Principal":{"Service":"cloudfront.amazonaws.com"},"Resource":"arn:aws:s3:::todo-frontend-3047321f/*","Effect":"Allow","Sid":"AllowCloudFrontOACRead"}]}
