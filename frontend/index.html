@@ -1,249 +1,877 @@
 <!DOCTYPE html>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ToDo (Serverless)</title>
-<style>
-  :root {
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
-      "Apple Color Emoji", "Segoe UI Emoji";
-  }
-  body {
-    margin: 24px;
-    max-width: 800px;
-  }
-  h1 {
-    margin: 0 0 16px;
-  }
-  .card {
-    border: 1px solid #ddd;
-    border-radius: 12px;
-    padding: 16px;
-    margin: 12px 0;
-  }
-  label {
-    font-size: 14px;
-    color: #555;
-  }
-  input[type="text"],
-  input[type="datetime-local"] {
-    padding: 8px 10px;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    font-size: 14px;
-  }
-  button {
-    padding: 8px 12px;
-    border-radius: 10px;
-    border: 1px solid #ccc;
-    background: #f6f6f6;
-    cursor: pointer;
-  }
-  button:hover {
-    background: #eee;
-  }
-  .row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .tasks {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-  }
-  .tasks li {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 12px;
-    border-bottom: 1px solid #eee;
-  }
-  .muted {
-    color: #777;
-    font-size: 12px;
-  }
-  .status {
-    font-weight: 600;
-    margin-right: 8px;
-  }
-  .right {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .badge {
-    padding: 2px 8px;
-    border-radius: 999px;
-    border: 1px solid #ddd;
-    font-size: 12px;
-  }
-  .error {
-    color: #b00020;
-  }
-</style>
+<html lang="ja">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>タスク管理</title>
 
-<h1>ToDo (Serverless)</h1>
-
-<div class="card">
-  <div class="row" style="gap: 12px; margin-bottom: 8px">
-    <label for="api">API Base URL</label>
-    <input
-      id="api"
-      type="text"
-      placeholder="https://xxxx.execute-api.ap-northeast-3.amazonaws.com/Prod"
-      style="min-width: 380px"
-    />
-    <button id="save">保存</button>
-    <span id="ping" class="muted"></span>
-  </div>
-  <div class="muted">
-    例:
-    <code>https://abc123.execute-api.ap-northeast-3.amazonaws.com/Prod</code>
-  </div>
-</div>
-
-<div class="card">
-  <form id="form" class="row">
-    <input
-      id="title"
-      type="text"
-      placeholder="タイトル"
-      required
-      style="flex: 1"
-    />
-    <input id="due" type="datetime-local" />
-    <button>追加</button>
-    <span id="msg" class="muted"></span>
-  </form>
-</div>
-
-<ul id="list" class="tasks card"></ul>
-
-<script>
-  const $ = (s) => document.querySelector(s);
-  // const LS_KEY = "todo_api_base";
-  // let BASE = localStorage.getItem(LS_KEY) || "";
-
-  // function setBase(v) {
-  //   BASE = (v || "").trim().replace(/\/+$/, ""); // 末尾のスラッシュを除去
-  //   localStorage.setItem(LS_KEY, BASE);
-  //   $("#api").value = BASE;
-  // }
-  // ← 入力不要：API のベースURLを固定値にする（/Prod の有無はあなたの環境どおり）
-  const BASE = "https://wqwkh06vkl.execute-api.ap-northeast-3.amazonaws.com";
-
-  async function ping() {
-    if (!BASE) {
-      $("#ping").textContent = "";
-      return;
+  <style>
+    :root {
+      --bg: #0b1020;
+      --card: #131a2a;
+      --line: #1e2740;
+      --text: #e8ecf7;
+      --muted: #a8b1c7;
+      --accent: #6ee7ff;
+      --accent-2: #9f88ff;
+      --danger: #ff6b6b;
+      --ok: #6ee7a2;
+      --shadow: 0 10px 30px rgba(0, 10, 40, 0.25);
+      --radius: 16px;
     }
-    $("#ping").textContent = "接続確認中...";
-    try {
-      const res = await fetch(`${BASE}/health`);
-      if (!res.ok) throw new Error(res.status);
-      const j = await res.json();
-      $("#ping").textContent = `接続OK / ${j.time}`;
-    } catch (e) {
-      $("#ping").textContent = "接続エラー。URLをご確認ください。";
-    }
-  }
-
-  async function load() {
-    if (!BASE) return;
-    const ul = $("#list");
-    ul.innerHTML = "<li>読み込み中...</li>";
-    try {
-      const res = await fetch(`${BASE}/tasks`);
-      const items = await res.json();
-      ul.innerHTML = "";
-      if (!Array.isArray(items) || items.length === 0) {
-        ul.innerHTML = "<li class='muted'>タスクはありません</li>";
-        return;
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f6f8ff;
+        --card: #fff;
+        --line: #e8ecf7;
+        --text: #0d1320;
+        --muted: #525f7a;
+        --shadow: 0 10px 24px rgba(16, 24, 40, 0.08);
       }
-      // 更新日時の降順でソート
-      items.sort((a, b) =>
-        String(b.updated_at).localeCompare(String(a.updated_at))
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 28px 18px 64px;
+      background: radial-gradient(
+          1200px 600px at 10% -10%,
+          rgba(111, 136, 255, 0.25),
+          transparent 60%
+        ),
+        radial-gradient(
+          900px 500px at 95% 15%,
+          rgba(110, 231, 255, 0.18),
+          transparent 55%
+        ),
+        var(--bg);
+      color: var(--text);
+      font: 16px/1.55 system-ui, -apple-system, Segoe UI, Roboto, Helvetica,
+        Arial;
+    }
+    .container {
+      max-width: 1080px;
+      margin: 0 auto;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+      font-size: clamp(26px, 5vw, 40px);
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      margin: 14px 0;
+    }
+    .row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    input[type="text"],
+    input[type="datetime-local"],
+    select {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--text);
+      border-radius: 12px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input::placeholder {
+      color: var(--muted);
+    }
+    input:focus,
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(110, 231, 255, 0.12);
+    }
+    .btn {
+      appearance: none;
+      border: 1px solid var(--line);
+      padding: 10px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      color: var(--text);
+      background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.03),
+        rgba(0, 0, 0, 0.04)
       );
-      for (const it of items) {
-        const li = document.createElement("li");
-        const left = document.createElement("div");
-        const right = document.createElement("div");
-        right.className = "right";
-        const dueTxt = it.due_date
-          ? new Date(it.due_date).toLocaleString()
-          : "";
-        left.innerHTML = `<span class="badge">${it.status}</span> ${it.title} <span class="muted">${dueTxt}</span>`;
+      transition: transform 0.08s, filter 0.2s;
+    }
+    .btn:hover {
+      filter: brightness(1.08);
+    }
+    .btn:active {
+      transform: translateY(1px);
+    }
+    .btn-accent {
+      border-color: transparent;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      color: #001321;
+      font-weight: 700;
+    }
+    .btn-danger {
+      border-color: #ff9b9b33;
+      background: #ff9b9b1a;
+      color: #ffecec;
+    }
+    @media (prefers-color-scheme: light) {
+      .btn-danger {
+        color: #7a0013;
+      }
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+    }
 
-        const done = document.createElement("button");
-        done.textContent = "done";
-        done.onclick = async () => {
-          await fetch(`${BASE}/tasks/${it.task_id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: "done" }),
+    /* chips / toolbar */
+    .chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .chip.active {
+      border-color: transparent;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      color: #001321;
+      font-weight: 700;
+    }
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: space-between;
+    }
+    .toolbar-left,
+    .toolbar-right {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    /* list view */
+    .tasks {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 10px;
+      border-bottom: 1px dashed var(--line);
+    }
+    .left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
+      min-width: 0;
+    }
+    .title {
+      font-weight: 600;
+      word-break: break-word;
+    }
+    .muted {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .due {
+      border: 1px dashed var(--line);
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+    .right {
+      display: flex;
+      gap: 8px;
+    }
+    .strike {
+      opacity: 0.6;
+      text-decoration: line-through;
+    }
+    .badge {
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+    .badge-open {
+      background: #fff1;
+      border: 1px solid var(--line);
+    }
+    .badge-done {
+      background: #20e3b24d;
+      border: 1px solid #20e3b280;
+      color: #073c2d;
+    }
+    .sel {
+      accent-color: var(--accent);
+    }
+
+    /* table view */
+    .table-wrap {
+      overflow: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      white-space: nowrap;
+    }
+    th.sticky {
+      position: sticky;
+      top: 0;
+      background: var(--card);
+    }
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .w-title {
+      min-width: 320px;
+    }
+
+    /* toast */
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 10px 14px;
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s, transform 0.25s;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+
+  <body>
+    <div class="container">
+      <header>
+        <h1>タスク管理</h1>
+      </header>
+
+      <!-- 追加フォーム -->
+      <section class="card">
+        <form id="form" class="row" autocomplete="off">
+          <input
+            id="title"
+            type="text"
+            placeholder="やることを入力（例：請求書の送付）"
+            required
+            style="flex: 1"
+          />
+          <!-- 手入力は無効化（カレンダー・時刻ピッカーのみ） -->
+          <input
+            id="due"
+            type="datetime-local"
+            style="width: 240px"
+            step="60"
+            inputmode="none"
+            autocomplete="off"
+            onkeydown="return false"
+            onpaste="return false"
+            ondragstart="return false"
+            ondrop="return false"
+          />
+          <button class="btn btn-accent">追加</button>
+          <span id="msg" class="hint"></span>
+        </form>
+      </section>
+
+      <!-- ツールバー（フィルタ / 並び替え / 表示切替 / 選択モード / CSV） -->
+      <section class="card">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <div id="filters" class="chips">
+              <div class="chip active" data-f="all">すべて</div>
+              <div class="chip" data-f="open">未</div>
+              <div class="chip" data-f="done">済</div>
+              <div class="chip" data-f="due-today">今日</div>
+              <div class="chip" data-f="due-week">今週</div>
+              <div class="chip" data-f="overdue">期限切れ</div>
+            </div>
+          </div>
+          <div class="toolbar-right">
+            <label class="hint">並び替え</label>
+            <select id="sort">
+              <option value="updated_desc">更新（新→旧）</option>
+              <option value="due_asc">期日（早い→遅い）</option>
+              <option value="due_desc">期日（遅い→早い）</option>
+              <option value="title_asc">タイトル（A→Z）</option>
+            </select>
+
+            <button id="toggleView" class="btn">表にする</button>
+            <button id="selectModeBtn" class="btn">選択</button>
+            <button id="exportCsv" class="btn">CSV</button>
+          </div>
+        </div>
+
+        <!-- 一括操作バー（選択中のみ表示） -->
+        <div
+          id="bulkBar"
+          class="row"
+          style="gap: 8px; display: none; margin-top: 12px"
+        >
+          <span class="hint" id="bulkCount">0 件選択中</span>
+          <button class="btn" id="bulkOpen">一括「未」に戻す</button>
+          <button class="btn" id="bulkDone">一括「済」にする</button>
+          <button class="btn btn-danger" id="bulkDelete">一括削除</button>
+          <button class="btn" id="bulkClear">選択解除</button>
+        </div>
+      </section>
+
+      <!-- タスクリスト / テーブル -->
+      <section class="card" id="listCard">
+        <ul id="list" class="tasks"></ul>
+      </section>
+
+      <section class="card" id="tableCard" style="display: none">
+        <div class="table-wrap">
+          <table id="tbl">
+            <thead>
+              <tr>
+                <th class="sticky">
+                  <input type="checkbox" id="selAll" class="sel" />
+                </th>
+                <th class="sticky">状態</th>
+                <th class="sticky w-title">タイトル</th>
+                <th class="sticky">期日</th>
+                <th class="sticky">更新</th>
+                <th class="sticky">操作</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script>
+      /* ====== 設定 ====== */
+      const BASE =
+        "https://wqwkh06vkl.execute-api.ap-northeast-3.amazonaws.com"; // 必要に応じて /Prod を付与
+
+      /* ====== Util ====== */
+      const $ = (s) => document.querySelector(s);
+      const fmt = (iso) => {
+        try {
+          return new Date(iso).toLocaleString("ja-JP", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
           });
-          await load();
-        };
+        } catch {
+          return "";
+        }
+      };
+      const toast = (m) => {
+        const t = $("#toast");
+        t.textContent = m;
+        t.classList.add("show");
+        setTimeout(() => t.classList.remove("show"), 1600);
+      };
+      const toLocalInputValue = (d) => {
+        const dt = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+        return dt.toISOString().slice(0, 16);
+      };
+      const setDefaultDue = () => {
+        $("#due").value = toLocalInputValue(new Date());
+      };
 
-        const del = document.createElement("button");
-        del.textContent = "削除";
-        del.onclick = async () => {
-          await fetch(`${BASE}/tasks/${it.task_id}`, { method: "DELETE" });
-          await load();
-        };
-
-        right.append(done, del);
-        li.append(left, right);
-        ul.append(li);
+      async function request(path, opt = {}) {
+        const res = await fetch(`${BASE}${path}`, {
+          headers: { "Content-Type": "application/json" },
+          ...opt,
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => res.statusText);
+          throw new Error(`${res.status} ${res.statusText} :: ${text}`);
+        }
+        const ct = res.headers.get("content-type") || "";
+        return ct.includes("application/json") ? res.json() : res.text();
       }
-    } catch (e) {
-      $(
-        "#list"
-      ).innerHTML = `<li class="error">読み込みに失敗しました: ${e}</li>`;
-    }
-  }
-  //保存ボタンの処理を削除
-  // $("#save").onclick = async () => {
-  //   setBase($("#api").value);
-  //   await ping();
-  //   await load();
-  // };
 
-  $("#form").onsubmit = async (e) => {
-    e.preventDefault();
-    const title = $("#title").value;
-    const dueLocal = $("#due").value;
-    const dueISO = dueLocal ? new Date(dueLocal).toISOString() : "";
-    try {
-      const payload = { title };
-      if (dueISO) payload.due_date = dueISO;
-      const res = await fetch(`${BASE}/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      /* ====== 状態 ====== */
+      let allItems = [];
+      let view = localStorage.getItem("view") || "list"; // 'list' | 'table'
+      let filter = localStorage.getItem("filter") || "all";
+      let sortKey = localStorage.getItem("sortKey") || "updated_desc";
+      let selecting = false;
+      const selected = new Set();
+
+      /* ====== フィルタ/ソート ====== */
+      function applyFilter(items) {
+        const now = new Date();
+        const startToday = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate()
+        );
+        const endWeek = new Date(startToday);
+        endWeek.setDate(startToday.getDate() + 7);
+        const sameDay = (a, b) =>
+          a.getFullYear() == b.getFullYear() &&
+          a.getMonth() == b.getMonth() &&
+          a.getDate() == b.getDate();
+
+        return items.filter((it) => {
+          if (filter === "open") return it.status !== "done";
+          if (filter === "done") return it.status === "done";
+          if (filter === "overdue") {
+            if (!it.due_date) return false;
+            return it.status !== "done" && new Date(it.due_date) < now;
+          }
+          if (filter === "due-today") {
+            if (!it.due_date) return false;
+            return sameDay(new Date(it.due_date), now);
+          }
+          if (filter === "due-week") {
+            if (!it.due_date) return false;
+            const d = new Date(it.due_date);
+            return d >= startToday && d <= endWeek;
+          }
+          return true;
+        });
+      }
+
+      function applySort(items) {
+        const arr = items.slice();
+        if (sortKey === "updated_desc")
+          arr.sort((a, b) =>
+            String(b.updated_at).localeCompare(String(a.updated_at))
+          );
+        if (sortKey === "due_asc")
+          arr.sort((a, b) =>
+            String(a.due_date || "9").localeCompare(String(b.due_date || "9"))
+          );
+        if (sortKey === "due_desc")
+          arr.sort((a, b) =>
+            String(b.due_date || "0").localeCompare(String(a.due_date || "0"))
+          );
+        if (sortKey === "title_asc")
+          arr.sort((a, b) =>
+            String(a.title || "").localeCompare(String(b.title || ""), "ja")
+          );
+        return arr;
+      }
+
+      function filteredSorted() {
+        return applySort(applyFilter(allItems));
+      }
+
+      /* ====== 描画 ====== */
+      function render(items = filteredSorted()) {
+        // ビュー切替
+        $("#listCard").style.display = view === "list" ? "block" : "none";
+        $("#tableCard").style.display = view === "table" ? "block" : "none";
+        $("#toggleView").textContent =
+          view === "list" ? "表にする" : "一覧にする";
+
+        // 選択UI
+        $("#bulkBar").style.display = selecting ? "flex" : "none";
+        $("#selAll").checked =
+          selecting &&
+          items.length > 0 &&
+          items.every((it) => selected.has(it.task_id));
+        $("#bulkCount").textContent = `${selected.size} 件選択中`;
+
+        // フィルタUI
+        document.querySelectorAll("#filters .chip").forEach((ch) => {
+          ch.classList.toggle("active", ch.dataset.f === filter);
+        });
+
+        // ソートUI
+        $("#sort").value = sortKey;
+
+        if (view === "list") {
+          renderList(items);
+        } else {
+          renderTable(items);
+        }
+      }
+
+      function statusBadge(it) {
+        const s = document.createElement("span");
+        s.className = `badge ${
+          it.status === "done" ? "badge-done" : "badge-open"
+        }`;
+        s.textContent = it.status === "done" ? "済" : "未";
+        return s;
+      }
+
+      function renderList(items) {
+        const ul = $("#list");
+        ul.innerHTML = "";
+        if (items.length === 0) {
+          ul.innerHTML = `<li class="muted" style="text-align:center;padding:24px">該当するタスクはありません</li>`;
+          return;
+        }
+        for (const it of items) {
+          const li = document.createElement("li");
+          li.className = "item";
+          const left = document.createElement("div");
+          left.className = "left";
+          const right = document.createElement("div");
+          right.className = "right";
+
+          if (selecting) {
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.className = "sel";
+            cb.checked = selected.has(it.task_id);
+            cb.onchange = () => {
+              cb.checked
+                ? selected.add(it.task_id)
+                : selected.delete(it.task_id);
+              render();
+            };
+            left.append(cb);
+          }
+
+          const badge = statusBadge(it);
+          const title = document.createElement("div");
+          title.className = "title";
+          title.textContent = it.title || "(no title)";
+          if (it.status === "done") title.classList.add("strike");
+          title.title = "ダブルクリックで編集";
+          title.ondblclick = () => inlineEditTitle(title, it);
+
+          const due = document.createElement("span");
+          if (it.due_date) {
+            due.className = "muted due";
+            due.textContent = fmt(it.due_date);
+          }
+
+          left.append(badge, title, due);
+
+          const btnDone = document.createElement("button");
+          btnDone.className = "btn";
+          btnDone.textContent = it.status === "done" ? "戻す" : "完了";
+          btnDone.onclick = () => toggleDone(it);
+
+          const btnDel = document.createElement("button");
+          btnDel.className = "btn btn-danger";
+          btnDel.textContent = "削除";
+          btnDel.onclick = () => delTask(it);
+
+          right.append(btnDone, btnDel);
+          li.append(left, right);
+          ul.append(li);
+        }
+      }
+
+      function renderTable(items) {
+        const tb = $("#tbl tbody");
+        tb.innerHTML = "";
+        if (items.length === 0) {
+          tb.innerHTML = `<tr><td colspan="6" class="muted">該当するタスクはありません</td></tr>`;
+          return;
+        }
+
+        for (const it of items) {
+          const tr = document.createElement("tr");
+
+          // 選択
+          const tdSel = document.createElement("td");
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.className = "sel";
+          cb.disabled = !selecting;
+          cb.checked = selected.has(it.task_id);
+          cb.onchange = () => {
+            cb.checked ? selected.add(it.task_id) : selected.delete(it.task_id);
+            render();
+          };
+          tdSel.append(cb);
+
+          const tdStatus = document.createElement("td");
+          tdStatus.append(statusBadge(it));
+
+          const tdTitle = document.createElement("td");
+          tdTitle.className = "w-title";
+          const t = document.createElement("span");
+          t.textContent = it.title || "(no title)";
+          if (it.status === "done") t.classList.add("strike");
+          t.title = "ダブルクリックで編集";
+          t.ondblclick = () => inlineEditTitle(t, it);
+          tdTitle.append(t);
+
+          const tdDue = document.createElement("td");
+          tdDue.textContent = it.due_date ? fmt(it.due_date) : "";
+          const tdUpd = document.createElement("td");
+          tdUpd.textContent = fmt(it.updated_at);
+
+          const tdOps = document.createElement("td");
+          const b1 = document.createElement("button");
+          b1.className = "btn";
+          b1.textContent = it.status === "done" ? "戻す" : "完了";
+          b1.onclick = () => toggleDone(it);
+          const b2 = document.createElement("button");
+          b2.className = "btn btn-danger";
+          b2.textContent = "削除";
+          b2.onclick = () => delTask(it);
+          tdOps.append(b1, b2);
+
+          tr.append(tdSel, tdStatus, tdTitle, tdDue, tdUpd, tdOps);
+          tb.append(tr);
+        }
+      }
+
+      /* ====== UI操作 ====== */
+      function inlineEditTitle(node, it) {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = it.title || "";
+        input.style.minWidth = "220px";
+        node.replaceWith(input);
+        input.focus();
+        input.select();
+
+        const finish = async (commit) => {
+          const v = input.value.trim();
+          if (commit && v !== (it.title || "")) {
+            await request(`/tasks/${it.task_id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ title: v }),
+            });
+            toast("タイトルを更新しました");
+            await load();
+          } else {
+            await load(); // 再描画で元に戻す
+          }
+        };
+        input.onkeydown = (e) => {
+          if (e.key === "Enter") finish(true);
+          if (e.key === "Escape") finish(false);
+        };
+        input.onblur = () => finish(true);
+      }
+
+      async function toggleDone(it) {
+        const next = it.status === "done" ? "open" : "done";
+        await request(`/tasks/${it.task_id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: next }),
+        });
+        toast(next === "done" ? "完了しました" : "未に戻しました");
+        await load();
+      }
+
+      async function delTask(it) {
+        if (!confirm("このタスクを削除しますか？")) return;
+        await request(`/tasks/${it.task_id}`, { method: "DELETE" });
+        toast("削除しました");
+        await load();
+      }
+
+      // 一括操作（順次実行）
+      async function bulkDo(kind) {
+        const ids = Array.from(selected);
+        if (ids.length === 0) return;
+        if (
+          kind === "delete" &&
+          !confirm(`${ids.length}件を削除します。よろしいですか？`)
+        )
+          return;
+
+        for (const id of ids) {
+          try {
+            if (kind === "delete")
+              await request(`/tasks/${id}`, { method: "DELETE" });
+            if (kind === "open")
+              await request(`/tasks/${id}`, {
+                method: "PATCH",
+                body: JSON.stringify({ status: "open" }),
+              });
+            if (kind === "done")
+              await request(`/tasks/${id}`, {
+                method: "PATCH",
+                body: JSON.stringify({ status: "done" }),
+              });
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        toast(kind === "delete" ? "削除しました" : "更新しました");
+        selected.clear();
+        await load();
+      }
+
+      // CSV（選択があれば選択分／無ければ現在の絞り込み分）
+      function exportCsv() {
+        const items = filteredSorted();
+        const pick = selected.size
+          ? items.filter((it) => selected.has(it.task_id))
+          : items;
+        const rows = [
+          ["id", "状態", "タイトル", "期日", "更新"],
+          ...pick.map((it) => [
+            it.task_id,
+            it.status === "done" ? "済" : "未",
+            it.title || "",
+            it.due_date || "",
+            it.updated_at || "",
+          ]),
+        ];
+        const csv =
+          "\ufeff" +
+          rows
+            .map((r) =>
+              r
+                .map((x) => {
+                  const s = String(x ?? "");
+                  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+                })
+                .join(",")
+            )
+            .join("\n");
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `tasks_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+
+      /* ====== データ取得 ====== */
+      async function load() {
+        try {
+          allItems = await request("/tasks");
+          render();
+        } catch (e) {
+          console.error(e);
+          $(
+            "#list"
+          ).innerHTML = `<li class="muted" style="text-align:center;padding:24px">読み込みに失敗: ${e.message}</li>`;
+        }
+      }
+
+      /* ====== イベント ====== */
+      // 追加
+      $("#form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const title = $("#title").value.trim();
+        const dueLocal = $("#due").value;
+        if (!title) return;
+        const payload = { title };
+        if (dueLocal) payload.due_date = new Date(dueLocal).toISOString();
+        try {
+          await request("/tasks", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+          $("#form").reset();
+          setDefaultDue();
+          toast("追加しました");
+          await load();
+        } catch (e) {
+          $("#msg").textContent = `追加に失敗: ${e.message}`;
+          setTimeout(() => ($("#msg").textContent = ""), 1800);
+        }
       });
-      if (!res.ok) {
-        const t = await res.text();
-        throw new Error(`${res.status} ${res.statusText} :: ${t}`);
-      }
-      $("#form").reset();
-      $("#msg").textContent = "追加しました";
-      setTimeout(() => ($("#msg").textContent = ""), 1200);
-      await load();
-    } catch (e) {
-      $("#msg").textContent = `追加に失敗しました: ${e}`;
-    }
-  };
 
-  // init
-  // setBase(BASE);
-  // ping().then(load);
-  // init：上の設定カード（最初の .card）を隠して起動
-  document.addEventListener("DOMContentLoaded", () => {
-    const cards = document.querySelectorAll(".card");
-    if (cards.length) cards[0].style.display = "none";
-    $("#api") && ($("#api").value = BASE); // 万一UIを残した場合の表示だけ合わせる
-    ping().then(load);
-  });
-</script>
+      // フィルタ
+      document.querySelectorAll("#filters .chip").forEach(
+        (ch) =>
+          (ch.onclick = () => {
+            filter = ch.dataset.f;
+            localStorage.setItem("filter", filter);
+            render();
+          })
+      );
+
+      // 並び替え
+      $("#sort").onchange = (e) => {
+        sortKey = e.target.value;
+        localStorage.setItem("sortKey", sortKey);
+        render();
+      };
+
+      // 表示切替
+      $("#toggleView").onclick = () => {
+        view = view === "list" ? "table" : "list";
+        localStorage.setItem("view", view);
+        render();
+      };
+
+      // 選択モード
+      $("#selectModeBtn").onclick = () => {
+        selecting = !selecting;
+        if (!selecting) selected.clear();
+        $("#selectModeBtn").textContent = selecting ? "選択終了" : "選択";
+        render();
+      };
+
+      // 一括操作
+      $("#bulkOpen").onclick = () => bulkDo("open");
+      $("#bulkDone").onclick = () => bulkDo("done");
+      $("#bulkDelete").onclick = () => bulkDo("delete");
+      $("#bulkClear").onclick = () => {
+        selected.clear();
+        render();
+      };
+
+      // テーブルの全選択
+      $("#selAll").onchange = (e) => {
+        const items = filteredSorted();
+        if (e.target.checked) {
+          items.forEach((it) => selected.add(it.task_id));
+        } else {
+          selected.clear();
+        }
+        render();
+      };
+
+      // CSV
+      $("#exportCsv").onclick = exportCsv;
+
+      // 起動
+      (async () => {
+        setDefaultDue();
+        await load();
+      })();
+    </script>
+  </body>
+</html>
