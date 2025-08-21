@@ -56,10 +56,20 @@ Resources:
         Variables:
           ALLOWED_ORIGINS: "http://localhost:5500,https://$CfDomain"
           TABLE_NAME: !Ref TodoTable
-          USER_ID: !Ref UserId
+          USER_ID:
+            !Ref UserId
+            # 追加↓（SES設定）
+          EMAIL_FROM: "m.daisuke1110@gmail.com" # SESで検証済みの送信元に置き換え
+          EMAIL_TO: "m.daisuke1110@outlook.jp" # サンドボックス中は受信側も検証が必要
+          SES_REGION: "ap-northeast-3"
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TodoTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+              Resource: "*"
       Events:
         AnyRoute:
           Type: HttpApi
