@@ -20,6 +20,8 @@ EMAIL_TO = os.environ.get(
     "EMAIL_TO"
 )  # 例: you@example.com（サンドボックス中は受信側も検証）
 SES_REGION = os.environ.get("SES_REGION", "ap-northeast-3")
+# 一日おきにメール送信
+NOTIFY_INTERVAL_HOURS = int(os.environ.get("NOTIFY_INTERVAL_HOURS", "0"))
 
 # ==== AWS ====
 dynamodb = boto3.resource("dynamodb")
@@ -207,19 +209,23 @@ def bulk_tasks():
 
 # ---------- Overdue Mail Notify ----------
 def _collect_overdue_targets(items: List[Dict]) -> List[Dict]:
-    """statusがopen/overdue かつ due_dateが過去、かつ未通知のものを抽出"""
+    """
+    status が open/overdue かつ due_date が現在(UTC)より過去。
+    さらに、未通知 もしくは 最終通知から NOTIFY_INTERVAL_HOURS 以上経過しているものを抽出。
+    """
     now = datetime.now(timezone.utc)
     targets = []
+
     for it in items:
         due = it.get("due_date")
         if not due:
             continue
         if it.get("status") not in ("open", "overdue"):
             continue
-        if it.get("overdue_notified_at"):  # 既に通知済み
+        if not is_overdue(due, now):
             continue
-        if is_overdue(due, now):
-            targets.append(it)
+        targets.append(it)
+
     return targets
 
 
