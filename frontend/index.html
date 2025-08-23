@@ -325,7 +325,6 @@
               <div class="chip" data-f="open">未</div>
               <div class="chip" data-f="done">済</div>
               <div class="chip" data-f="due-today">今日</div>
-              <div class="chip" data-f="due-week">今週</div>
               <div class="chip" data-f="overdue">期限切れ</div>
             </div>
           </div>
@@ -449,8 +448,6 @@
           now.getMonth(),
           now.getDate()
         );
-        const endWeek = new Date(startToday);
-        endWeek.setDate(startToday.getDate() + 7);
         const sameDay = (a, b) =>
           a.getFullYear() == b.getFullYear() &&
           a.getMonth() == b.getMonth() &&
@@ -466,11 +463,6 @@
           if (filter === "due-today") {
             if (!it.due_date) return false;
             return sameDay(new Date(it.due_date), now);
-          }
-          if (filter === "due-week") {
-            if (!it.due_date) return false;
-            const d = new Date(it.due_date);
-            return d >= startToday && d <= endWeek;
           }
           return true;
         });
