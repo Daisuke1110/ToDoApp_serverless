@@ -280,6 +280,59 @@
       opacity: 1;
       transform: translateX(-50%) translateY(0);
     }
+    .list-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 8px 0 6px;
+    }
+    .list-title {
+      margin: 0;
+      font-weight: 800;
+      font-size: clamp(18px, 3vw, 22px);
+      letter-spacing: 0.2px;
+      position: relative;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .list-title::after {
+      content: "";
+      display: block;
+      height: 3px;
+      margin-top: 6px;
+      width: 120px;
+      background: linear-gradient(90deg, var(--accent), transparent);
+      border-radius: 999px;
+      opacity: 0.8;
+    }
+    .list-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .tree-indent {
+      position: relative;
+      padding-left: 12px;
+      margin-left: calc(var(--depth, 0) * 16px);
+      border-left: 1px dashed var(--line);
+    }
+    .toggle {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      background: #0000000b;
+      font-size: 12px;
+      user-select: none;
+    }
+    .toggle:hover {
+      filter: brightness(1.08);
+    }
   </style>
 
   <body>
@@ -298,19 +351,26 @@
             required
             style="flex: 1"
           />
-          <!-- 手入力は無効化（カレンダー・時刻ピッカーのみ） -->
           <input
             id="due"
             type="datetime-local"
             style="width: 240px"
             step="60"
-            inputmode="none"
             autocomplete="off"
-            onkeydown="return false"
-            onpaste="return false"
-            ondragstart="return false"
-            ondrop="return false"
+            placeholder="例: 2025-08-24T23:59"
           />
+          <!-- 期限プリセット（#due の直後に） -->
+          <div
+            class="chips"
+            aria-label="期限プリセット"
+            style="margin-top: 6px"
+          >
+            <div class="chip" onclick="setDueToday()">今日</div>
+            <div class="chip" onclick="setDueTomorrow()">明日</div>
+            <div class="chip" onclick="setDueWeekend()">週末</div>
+            <div class="chip" onclick="clearDue()">期限なし</div>
+          </div>
+
           <button class="btn btn-accent">追加</button>
           <span id="msg" class="hint"></span>
         </form>
@@ -354,6 +414,16 @@
           <button class="btn" id="bulkDone">一括「済」にする</button>
           <button class="btn btn-danger" id="bulkDelete">一括削除</button>
           <button class="btn" id="bulkClear">選択解除</button>
+        </div>
+      </section>
+
+      <section class="card" id="listHeaderCard">
+        <div class="list-header">
+          <h2 class="list-title">タスク一覧</h2>
+          <div class="list-actions">
+            <button id="expandAll" class="btn">すべて展開</button>
+            <button id="collapseAll" class="btn">すべて折りたたむ</button>
+          </div>
         </div>
       </section>
 
@@ -418,12 +488,53 @@
       const setDefaultDue = () => {
         $("#due").value = toLocalInputValue(new Date());
       };
+      // ====== 期限プリセット（23:59固定） ======
+      function endOfDay(d) {
+        d.setHours(23, 59, 0, 0); // 23:59:00
+        return d;
+      }
+      function setDueByDate(d) {
+        $("#due").value = toLocalInputValue(endOfDay(d));
+        $("#title").focus();
+      }
+
+      // 今日 23:59
+      function setDueToday() {
+        setDueByDate(new Date());
+      }
+
+      // 明日 23:59
+      function setDueTomorrow() {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        setDueByDate(d);
+      }
+
+      // 今週末（土曜）23:59
+      function setDueWeekend() {
+        const d = new Date();
+        const day = d.getDay(); // 0=日,1=月,...,6=土
+        const daysUntilSat = (6 - day + 7) % 7; // 今日が土曜なら 0
+        d.setDate(d.getDate() + daysUntilSat);
+        setDueByDate(d);
+      }
+
+      // 期限なし（空にする）
+      function clearDue() {
+        $("#due").value = "";
+        $("#title").focus();
+      }
 
       async function request(path, opt = {}) {
-        const res = await fetch(`${BASE}${path}`, {
-          headers: { "Content-Type": "application/json" },
-          ...opt,
-        });
+        const init = { ...opt };
+        // ボディがあるときだけ Content-Type を付ける（DELETE/GET は付けない）
+        if (init.body) {
+          init.headers = {
+            ...(init.headers || {}),
+            "Content-Type": "application/json",
+          };
+        }
+        const res = await fetch(`${BASE}${path}`, init);
         if (!res.ok) {
           const text = await res.text().catch(() => res.statusText);
           throw new Error(`${res.status} ${res.statusText} :: ${text}`);
@@ -439,6 +550,54 @@
       let sortKey = localStorage.getItem("sortKey") || "updated_desc";
       let selecting = false;
       const selected = new Set();
+
+      /* --- 追加: 階層の開閉状態を保持（親IDの集合） --- */
+      const expanded = new Set(
+        JSON.parse(localStorage.getItem("expanded") || "[]")
+      );
+      function setExpandedPersist() {
+        localStorage.setItem("expanded", JSON.stringify([...expanded]));
+      }
+
+      /* --- 追加: フラット配列から木を作る --- */
+      function buildTree(items) {
+        const byId = new Map();
+        items.forEach((it) => {
+          it.children = [];
+          byId.set(it.task_id, it);
+        });
+        const roots = [];
+        for (const it of items) {
+          const pid = it.parent_id;
+          if (pid && byId.has(pid)) byId.get(pid).children.push(it);
+          else roots.push(it);
+        }
+        // 子は任意に並べ替え（親と同じキー）
+        const sortFn = (a, b) => {
+          if (sortKey === "updated_desc")
+            return String(b.updated_at).localeCompare(String(a.updated_at));
+          if (sortKey === "due_asc")
+            return String(a.due_date || "9").localeCompare(
+              String(b.due_date || "9")
+            );
+          if (sortKey === "due_desc")
+            return String(b.due_date || "0").localeCompare(
+              String(a.due_date || "0")
+            );
+          if (sortKey === "title_asc")
+            return String(a.title || "").localeCompare(
+              String(b.title || ""),
+              "ja"
+            );
+          return 0;
+        };
+        const sortRec = (nodes) => {
+          nodes.sort(sortFn);
+          nodes.forEach((n) => sortRec(n.children));
+        };
+        sortRec(roots);
+        return roots;
+      }
 
       /* ====== フィルタ/ソート ====== */
       function applyFilter(items) {
@@ -540,14 +699,20 @@
           ul.innerHTML = `<li class="muted" style="text-align:center;padding:24px">該当するタスクはありません</li>`;
           return;
         }
-        for (const it of items) {
+
+        const roots = buildTree(items);
+
+        const addRow = (it, depth) => {
           const li = document.createElement("li");
           li.className = "item";
+          li.style.setProperty("--depth", depth);
+
           const left = document.createElement("div");
-          left.className = "left";
+          left.className = "left tree-indent";
           const right = document.createElement("div");
           right.className = "right";
 
+          // 選択チェック
           if (selecting) {
             const cb = document.createElement("input");
             cb.type = "checkbox";
@@ -562,7 +727,30 @@
             left.append(cb);
           }
 
+          // 折りたたみトグル
+          if (it.children && it.children.length > 0) {
+            const tgl = document.createElement("div");
+            tgl.className = "toggle";
+            tgl.textContent = expanded.has(it.task_id) ? "▼" : "▶";
+            tgl.title = "展開/折りたたみ";
+            tgl.onclick = () => {
+              if (expanded.has(it.task_id)) expanded.delete(it.task_id);
+              else expanded.add(it.task_id);
+              setExpandedPersist();
+              render();
+            };
+            left.append(tgl);
+          } else {
+            // 子がない場合のプレースホルダ（スペーサ）
+            const sp = document.createElement("div");
+            sp.style.width = "24px";
+            left.append(sp);
+          }
+
+          // 状態バッジ
           const badge = statusBadge(it);
+
+          // タイトル
           const title = document.createElement("div");
           title.className = "title";
           title.textContent = it.title || "(no title)";
@@ -570,6 +758,7 @@
           title.title = "ダブルクリックで編集";
           title.ondblclick = () => inlineEditTitle(title, it);
 
+          // 期日
           const due = document.createElement("span");
           if (it.due_date) {
             due.className = "muted due";
@@ -578,20 +767,43 @@
 
           left.append(badge, title, due);
 
+          // 操作ボタン
+          const btnAddChild = document.createElement("button");
+          btnAddChild.className = "btn";
+          btnAddChild.textContent = "サブタスク";
+          btnAddChild.title = "このタスクの配下にサブタスクを追加";
+          btnAddChild.onclick = () => addSubtask(it);
+
           const btnDone = document.createElement("button");
           btnDone.className = "btn";
           btnDone.textContent = it.status === "done" ? "戻す" : "完了";
           btnDone.onclick = () => toggleDone(it);
 
           const btnDel = document.createElement("button");
+          btnDel.type = "button";
           btnDel.className = "btn btn-danger";
           btnDel.textContent = "削除";
-          btnDel.onclick = () => delTask(it);
+          btnDel.onclick = async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            await delTaskCascade(it); // 階層化を使ってないなら delTask(it)
+          };
 
-          right.append(btnDone, btnDel);
+          right.append(btnAddChild, btnDone, btnDel);
           li.append(left, right);
           ul.append(li);
-        }
+
+          // 子の描画（折りたたみチェック）
+          if (
+            it.children &&
+            it.children.length > 0 &&
+            expanded.has(it.task_id)
+          ) {
+            for (const ch of it.children) addRow(ch, depth + 1);
+          }
+        };
+
+        for (const r of roots) addRow(r, 0);
       }
 
       function renderTable(items) {
@@ -649,6 +861,69 @@
           tr.append(tdSel, tdStatus, tdTitle, tdDue, tdUpd, tdOps);
           tb.append(tr);
         }
+      }
+
+      // サブタスク追加
+      async function addSubtask(parent) {
+        const t = prompt("サブタスクのタイトル");
+        if (!t) return;
+        await request("/tasks", {
+          method: "POST",
+          body: JSON.stringify({ title: t, parent_id: parent.task_id }),
+        });
+        expanded.add(parent.task_id); // 追加直後は展開状態に
+        setExpandedPersist();
+        toast("サブタスクを追加しました");
+        await load();
+      }
+
+      // 子孫IDを集める（allItems から）
+      function collectDescendantIds(rootId) {
+        const byParent = new Map();
+        for (const it of allItems) {
+          if (!it.parent_id) continue;
+          if (!byParent.has(it.parent_id)) byParent.set(it.parent_id, []);
+          byParent.get(it.parent_id).push(it.task_id);
+        }
+        const out = [];
+        const stack = [rootId];
+        while (stack.length) {
+          const cur = stack.pop();
+          const kids = byParent.get(cur) || [];
+          for (const k of kids) {
+            out.push(k);
+            stack.push(k);
+          }
+        }
+        return out; // 直下～孫以降すべて
+      }
+
+      // 親ごと一括削除
+      async function delTaskCascade(it) {
+        const descendants = collectDescendantIds(it.task_id);
+        const count = 1 + descendants.length;
+        if (
+          !confirm(
+            `このタスクと配下 ${descendants.length} 件、計 ${count} 件を削除します。よろしいですか？`
+          )
+        )
+          return;
+
+        // 親→子の順でも子→親の順でもOK（個別 DELETE のため）
+        // 失敗を恐れず直列で順次実行
+        try {
+          // まず子孫を削除
+          for (const id of descendants) {
+            await request(`/tasks/${id}`, { method: "DELETE" });
+          }
+          // 最後に親
+          await request(`/tasks/${it.task_id}`, { method: "DELETE" });
+          toast("削除しました");
+        } catch (e) {
+          console.error(e);
+          toast("一部の削除に失敗しました");
+        }
+        await load();
       }
 
       /* ====== UI操作 ====== */
@@ -864,6 +1139,20 @@
         setDefaultDue();
         await load();
       })();
+      $("#expandAll").onclick = () => {
+        // すべての親IDを expanded に入れる
+        allItems.forEach((it) => {
+          if (allItems.some((ch) => ch.parent_id === it.task_id))
+            expanded.add(it.task_id);
+        });
+        setExpandedPersist();
+        render();
+      };
+      $("#collapseAll").onclick = () => {
+        expanded.clear();
+        setExpandedPersist();
+        render();
+      };
     </script>
   </body>
 </html>

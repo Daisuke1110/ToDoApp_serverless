@@ -87,6 +87,10 @@ def create_task():
     due = body.get("due_date")
     if due:
         item["due_date"] = due
+    # 追加: 親
+    parent = body.get("parent_id")
+    if parent:
+        item["parent_id"] = parent
 
     table.put_item(Item=item)
     return jsonify(item), 201
@@ -101,11 +105,13 @@ def _update_spec_from_payload(payload: dict):
         names[f"#_{k}"] = k
         values[f":{k}"] = v
 
-    for k in ("title", "status", "due_date"):
+    # --- _update_spec_from_payload() を拡張 ---
+    for k in ("title", "status", "due_date", "parent_id"):
         if k in payload:
-            if k == "due_date" and payload[k] in (None, ""):
-                remove_expr.append("#_due_date")
-                names["#_due_date"] = "due_date"
+            # due_date / parent_id は空なら属性を削除
+            if k in ("due_date", "parent_id") and payload[k] in (None, ""):
+                remove_expr.append(f"#_{k}")
+                names[f"#_{k}"] = k
             else:
                 add_set(k, payload[k])
 
@@ -301,3 +307,27 @@ def notify_overdue():
 
     updated = _mark_notified(targets)
     return jsonify({"sent": 1, "target_count": len(targets), "notified": updated}), 200
+
+
+# どのパスにもマッチする OPTIONS（プリフライト）レスポンス
+@app.route("/", methods=["OPTIONS"])
+@app.route("/<path:path>", methods=["OPTIONS"])
+def cors_preflight(path=None):
+    # 204 No Content を返せばOK。flask-cors が CORS ヘッダを付けてくれる。
+    return ("", 204)
+
+
+@app.after_request
+def add_cors_headers(resp):
+    origin = request.headers.get("Origin")
+    allowed = [
+        s.strip() for s in os.environ.get("ALLOWED_ORIGINS", "").split(",") if s.strip()
+    ]
+    if "*" in allowed or (origin and origin in allowed):
+        resp.headers["Access-Control-Allow-Origin"] = origin or "*"
+    else:
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+
+    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,PATCH,DELETE,OPTIONS"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return resp
