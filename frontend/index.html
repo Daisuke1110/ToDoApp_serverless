@@ -455,6 +455,59 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+    <!-- ✅ ここ（<script> の直前）にモーダルHTMLを置く -->
+    <div
+      id="detailsOverlay"
+      style="
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.35);
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      "
+    >
+      <div
+        style="
+          width: min(680px, 90vw);
+          background: var(--card);
+          color: var(--text);
+          border: 1px solid var(--line);
+          border-radius: 12px;
+          padding: 16px;
+          box-shadow: var(--shadow);
+        "
+      >
+        <h3 style="margin: 0 0 10px">タスクの詳細</h3>
+        <div class="muted" id="detailsTitle" style="margin-bottom: 8px"></div>
+        <textarea
+          id="detailsText"
+          rows="10"
+          style="
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--line);
+            background: transparent;
+            color: var(--text);
+          "
+        ></textarea>
+        <div
+          style="
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            margin-top: 12px;
+          "
+        >
+          <button class="btn" id="detailsClear">クリア</button>
+          <button class="btn" id="detailsCancel">キャンセル</button>
+          <button class="btn btn-accent" id="detailsSave">保存</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       /* ====== 設定 ====== */
       const BASE =
@@ -486,8 +539,11 @@
         return dt.toISOString().slice(0, 16);
       };
       const setDefaultDue = () => {
-        $("#due").value = toLocalInputValue(new Date());
+        const d = new Date();
+        d.setHours(23, 59, 0, 0); // 今日の23:59に固定
+        $("#due").value = toLocalInputValue(d);
       };
+
       // ====== 期限プリセット（23:59固定） ======
       function endOfDay(d) {
         d.setHours(23, 59, 0, 0); // 23:59:00
@@ -758,12 +814,24 @@
           title.title = "ダブルクリックで編集";
           title.ondblclick = () => inlineEditTitle(title, it);
 
+          // ★ ここに追加
+          if (it.details) {
+            const tag = document.createElement("span");
+            tag.className = "badge badge-open"; // 既存バッジの見た目を活用
+            tag.textContent = "詳細あり";
+            left.append(tag); // タイトルの右側に付ける
+          }
           // 期日
           const due = document.createElement("span");
           if (it.due_date) {
             due.className = "muted due";
             due.textContent = fmt(it.due_date);
+          } else {
+            due.className = "muted due";
+            due.textContent = "期限なし";
           }
+          due.title = "ダブルクリックで編集";
+          due.ondblclick = () => inlineEditDue(due, it);
 
           left.append(badge, title, due);
 
@@ -773,6 +841,13 @@
           btnAddChild.textContent = "サブタスク";
           btnAddChild.title = "このタスクの配下にサブタスクを追加";
           btnAddChild.onclick = () => addSubtask(it);
+
+          // ★ここに詳細ボタンを追加
+          const btnDetails = document.createElement("button");
+          btnDetails.className = "btn";
+          btnDetails.textContent = it.details ? "詳細(あり)" : "詳細";
+          btnDetails.title = "このタスクの詳細を表示/編集";
+          btnDetails.onclick = () => openDetailsModal(it);
 
           const btnDone = document.createElement("button");
           btnDone.className = "btn";
@@ -789,7 +864,7 @@
             await delTaskCascade(it); // 階層化を使ってないなら delTask(it)
           };
 
-          right.append(btnAddChild, btnDone, btnDel);
+          right.append(btnAddChild, btnDetails, btnDone, btnDel);
           li.append(left, right);
           ul.append(li);
 
@@ -1054,6 +1129,100 @@
           ).innerHTML = `<li class="muted" style="text-align:center;padding:24px">読み込みに失敗: ${e.message}</li>`;
         }
       }
+
+      function inlineEditDue(node, it) {
+        const input = document.createElement("input");
+        input.type = "datetime-local";
+        input.value = it.due_date
+          ? toLocalInputValue(new Date(it.due_date))
+          : "";
+        input.style.minWidth = "180px";
+        node.replaceWith(input);
+        input.focus();
+
+        const finish = async (commit) => {
+          const v = input.value;
+          if (commit) {
+            const payload = {};
+            if (v) {
+              payload.due_date = new Date(v).toISOString();
+            } else {
+              payload.due_date = ""; // 空なら削除
+            }
+            await request(`/tasks/${it.task_id}`, {
+              method: "PATCH",
+              body: JSON.stringify(payload),
+            });
+            toast("期限を更新しました");
+          }
+          await load();
+        };
+
+        input.onkeydown = (e) => {
+          if (e.key === "Enter") finish(true);
+          if (e.key === "Escape") finish(false);
+        };
+        input.onblur = () => finish(true);
+      }
+
+      let detailsTarget = null; // 今開いているタスク
+
+      function openDetailsModal(it) {
+        detailsTarget = it;
+        $("#detailsTitle").textContent = it.title || "(no title)";
+        $("#detailsText").value = it.details || "";
+        $("#detailsOverlay").style.display = "flex";
+        $("#detailsText").focus();
+      }
+
+      function closeDetailsModal() {
+        $("#detailsOverlay").style.display = "none";
+        detailsTarget = null;
+      }
+
+      // 保存
+      $("#detailsSave").onclick = async () => {
+        if (!detailsTarget) return;
+        const text = $("#detailsText").value.trim();
+        const payload = { details: text || "" }; // 空なら削除扱い
+        await request(`/tasks/${detailsTarget.task_id}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        toast("詳細を保存しました");
+        closeDetailsModal();
+        await load();
+      };
+
+      // クリア（＝削除）
+      $("#detailsClear").onclick = async () => {
+        if (!detailsTarget) return;
+        await request(`/tasks/${detailsTarget.task_id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ details: "" }),
+        });
+        toast("詳細をクリアしました");
+        closeDetailsModal();
+        await load();
+      };
+
+      // キャンセル
+      $("#detailsCancel").onclick = () => closeDetailsModal();
+
+      // オーバーレイ外クリックで閉じる（お好み）
+      $("#detailsOverlay").addEventListener("click", (e) => {
+        if (e.target.id === "detailsOverlay") closeDetailsModal();
+      });
+
+      // Escで閉じる
+      window.addEventListener("keydown", (e) => {
+        if (
+          e.key === "Escape" &&
+          $("#detailsOverlay").style.display === "flex"
+        ) {
+          closeDetailsModal();
+        }
+      });
 
       /* ====== イベント ====== */
       // 追加

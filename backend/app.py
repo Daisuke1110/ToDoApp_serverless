@@ -83,6 +83,10 @@ def create_task():
         "status": body.get("status", "open"),
         "updated_at": now_iso(),
     }
+    # 追加: 詳細
+    details = body.get("details")
+    if details:
+        item["details"] = details
     # None/空は保存しない（DynamoDB は None を受け付けない）
     due = body.get("due_date")
     if due:
@@ -105,11 +109,10 @@ def _update_spec_from_payload(payload: dict):
         names[f"#_{k}"] = k
         values[f":{k}"] = v
 
-    # --- _update_spec_from_payload() を拡張 ---
-    for k in ("title", "status", "due_date", "parent_id"):
+    # --- 更新対象キーをループ ---
+    for k in ("title", "status", "due_date", "parent_id", "details"):
         if k in payload:
-            # due_date / parent_id は空なら属性を削除
-            if k in ("due_date", "parent_id") and payload[k] in (None, ""):
+            if k in ("due_date", "parent_id", "details") and payload[k] in (None, ""):
                 remove_expr.append(f"#_{k}")
                 names[f"#_{k}"] = k
             else:
