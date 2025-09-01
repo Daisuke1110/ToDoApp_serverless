@@ -1,6 +1,7 @@
 # backend/app.py
 import os
 import uuid
+import time
 from datetime import datetime, timezone
 from typing import List, Dict
 
@@ -8,6 +9,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import boto3
 from botocore.exceptions import ClientError
+from decimal import Decimal
 
 # ==== 設定 ====
 ALLOWED = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5500").split(",")
@@ -66,9 +68,13 @@ def health():
 @app.get("/tasks")
 def list_tasks():
     resp = table.query(
-        KeyConditionExpression=boto3.dynamodb.conditions.Key("user_id").eq(USER_ID)
+        KeyConditionExpression=boto3.dynamodb.conditions.Key("user_id").eq(USER_ID),
+        ConsistentRead=True,  # ← これを追加！
     )
-    return jsonify(resp.get("Items", []))
+    items = resp.get("Items", [])
+    # ▼ sort（数値）が小さい順に並べる。無いものは0扱い
+    items = sorted(items, key=lambda x: float(x.get("sort", 1e18)))
+    return jsonify(items)
 
 
 # ---------- Create ----------
@@ -82,6 +88,8 @@ def create_task():
         "title": body.get("title", ""),
         "status": body.get("status", "open"),
         "updated_at": now_iso(),
+        # ▼ 並び順: “下に追加”したいので現在ミリ秒を採用
+        "sort": int(time.time() * 1000),
     }
     # 追加: 詳細
     details = body.get("details")
@@ -105,13 +113,17 @@ def _update_spec_from_payload(payload: dict):
     set_expr, remove_expr, names, values = [], [], {}, {}
 
     def add_set(k, v):
+        # ▼ sort は DynamoDB の Number 型にしたいので Decimal に変換
+        if k == "sort" and v is not None:
+            v = Decimal(str(v))  # 小数も安全に扱える
         set_expr.append(f"#_{k} = :{k}")
         names[f"#_{k}"] = k
         values[f":{k}"] = v
 
     # --- 更新対象キーをループ ---
-    for k in ("title", "status", "due_date", "parent_id", "details"):
+    for k in ("title", "status", "due_date", "parent_id", "details", "sort"):
         if k in payload:
+            # これら3つは空(None/"")なら属性自体を削除（REMOVE）
             if k in ("due_date", "parent_id", "details") and payload[k] in (None, ""):
                 remove_expr.append(f"#_{k}")
                 names[f"#_{k}"] = k
@@ -121,6 +133,7 @@ def _update_spec_from_payload(payload: dict):
     if not set_expr and not remove_expr:
         return None
 
+    # 更新時刻は毎回上書き
     add_set("updated_at", now_iso())
 
     parts = []
@@ -133,6 +146,7 @@ def _update_spec_from_payload(payload: dict):
         "UpdateExpression": " ".join(parts),
         "ExpressionAttributeNames": names,
         "ExpressionAttributeValues": values,
+        # （任意）存在チェックを入れたい場合は呼び出し側で ConditionExpression を足す
     }
 
 

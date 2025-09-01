@@ -1,520 +1,259 @@
 <!DOCTYPE html>
 <html lang="ja">
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>タスク管理</title>
-
-  <style>
-    :root {
-      --bg: #0b1020;
-      --card: #131a2a;
-      --line: #1e2740;
-      --text: #e8ecf7;
-      --muted: #a8b1c7;
-      --accent: #6ee7ff;
-      --accent-2: #9f88ff;
-      --danger: #ff6b6b;
-      --ok: #6ee7a2;
-      --shadow: 0 10px 30px rgba(0, 10, 40, 0.25);
-      --radius: 16px;
-    }
-    @media (prefers-color-scheme: light) {
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ToDo (Simplest)</title>
+    <style>
       :root {
-        --bg: #f6f8ff;
-        --card: #fff;
-        --line: #e8ecf7;
-        --text: #0d1320;
-        --muted: #525f7a;
-        --shadow: 0 10px 24px rgba(16, 24, 40, 0.08);
+        /* Dark theme */
+        --bg: #0b1220; /* ページ背景（濃紺） */
+        --card: #0f172a; /* カード背景（slate-900系） */
+        --text: #e5e7eb; /* 文字（明るめ） */
+        --muted: #9ca3af; /* 補助文字 */
+        --line: #1f2937; /* 枠線 */
+        --accent: #60a5fa; /* アクセント（青） */
+        --ok: #34d399; /* 成功 */
+        --danger: #f87171; /* エラー */
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 14px 32px rgba(2, 6, 23, 0.6);
+        --radius: 14px;
       }
-    }
-    * {
-      box-sizing: border-box;
-    }
-    body {
-      margin: 0;
-      padding: 28px 18px 64px;
-      background: radial-gradient(
-          1200px 600px at 10% -10%,
-          rgba(111, 136, 255, 0.25),
-          transparent 60%
-        ),
-        radial-gradient(
-          900px 500px at 95% 15%,
-          rgba(110, 231, 255, 0.18),
-          transparent 55%
-        ),
-        var(--bg);
-      color: var(--text);
-      font: 16px/1.55 system-ui, -apple-system, Segoe UI, Roboto, Helvetica,
-        Arial;
-    }
-    .container {
-      max-width: 1080px;
-      margin: 0 auto;
-    }
-    h1 {
-      margin: 0 0 8px;
-      font-weight: 800;
-      letter-spacing: 0.3px;
-      font-size: clamp(26px, 5vw, 40px);
-      background: linear-gradient(90deg, var(--accent), var(--accent-2));
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-    }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 16px;
-      margin: 14px 0;
-    }
-    .row {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-    input[type="text"],
-    input[type="datetime-local"],
-    select {
-      width: 100%;
-      padding: 12px 14px;
-      border: 1px solid var(--line);
-      background: transparent;
-      color: var(--text);
-      border-radius: 12px;
-      outline: none;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-    input::placeholder {
-      color: var(--muted);
-    }
-    input:focus,
-    select:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 4px rgba(110, 231, 255, 0.12);
-    }
-    .btn {
-      appearance: none;
-      border: 1px solid var(--line);
-      padding: 10px 14px;
-      border-radius: 999px;
-      cursor: pointer;
-      color: var(--text);
-      background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.03),
-        rgba(0, 0, 0, 0.04)
-      );
-      transition: transform 0.08s, filter 0.2s;
-    }
-    .btn:hover {
-      filter: brightness(1.08);
-    }
-    .btn:active {
-      transform: translateY(1px);
-    }
-    .btn-accent {
-      border-color: transparent;
-      background: linear-gradient(90deg, var(--accent), var(--accent-2));
-      color: #001321;
-      font-weight: 700;
-    }
-    .btn-danger {
-      border-color: #ff9b9b33;
-      background: #ff9b9b1a;
-      color: #ffecec;
-    }
-    @media (prefers-color-scheme: light) {
-      .btn-danger {
-        color: #7a0013;
+
+      body {
+        margin: 0;
+        font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto,
+          "Noto Sans JP", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+        color: var(--text);
+        background: radial-gradient(
+            1200px 500px at 20% -10%,
+            #1b2a44 0%,
+            transparent 60%
+          ),
+          radial-gradient(1000px 400px at 90% 0%, #0e223b 0%, transparent 60%),
+          linear-gradient(180deg, #0a1220 0%, #0b1220 100%);
       }
-    }
-    .hint {
-      color: var(--muted);
-      font-size: 12px;
-    }
 
-    /* chips / toolbar */
-    .chips {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .chip {
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 6px 12px;
-      font-size: 13px;
-      cursor: pointer;
-    }
-    .chip.active {
-      border-color: transparent;
-      background: linear-gradient(90deg, var(--accent), var(--accent-2));
-      color: #001321;
-      font-weight: 700;
-    }
-    .toolbar {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      flex-wrap: wrap;
-      justify-content: space-between;
-    }
-    .toolbar-left,
-    .toolbar-right {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
+      .container {
+        max-width: 920px;
+        margin: 24px auto;
+        padding: 0 16px;
+      }
 
-    /* list view */
-    .tasks {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-    }
-    .item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 14px 10px;
-      border-bottom: 1px dashed var(--line);
-    }
-    .left {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex: 1;
-      min-width: 0;
-    }
-    .title {
-      font-weight: 600;
-      word-break: break-word;
-    }
-    .muted {
-      color: var(--muted);
-      font-size: 12px;
-    }
-    .due {
-      border: 1px dashed var(--line);
-      padding: 2px 8px;
-      border-radius: 999px;
-    }
-    .right {
-      display: flex;
-      gap: 8px;
-    }
-    .strike {
-      opacity: 0.6;
-      text-decoration: line-through;
-    }
-    .badge {
-      font-weight: 700;
-      padding: 3px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-    }
-    .badge-open {
-      background: #fff1;
-      border: 1px solid var(--line);
-    }
-    .badge-done {
-      background: #20e3b24d;
-      border: 1px solid #20e3b280;
-      color: #073c2d;
-    }
-    .sel {
-      accent-color: var(--accent);
-    }
+      header h1 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
 
-    /* table view */
-    .table-wrap {
-      overflow: auto;
-    }
-    table {
-      width: 100%;
-      border-collapse: separate;
-      border-spacing: 0;
-    }
-    th,
-    td {
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--line);
-      text-align: left;
-      white-space: nowrap;
-    }
-    th.sticky {
-      position: sticky;
-      top: 0;
-      background: var(--card);
-    }
-    tr:hover td {
-      background: rgba(255, 255, 255, 0.02);
-    }
-    .w-title {
-      min-width: 320px;
-    }
+      .input,
+      .btn {
+        border: 1px solid var(--line);
+        background: #0b1528; /* 入力はやや明るい濃紺 */
+        color: var(--text);
+        padding: 10px 12px;
+        border-radius: var(--radius);
+      }
+      .input::placeholder {
+        color: #7c8696;
+      }
+      .input:focus,
+      .input:focus-visible,
+      textarea.input:focus,
+      textarea.input:focus-visible {
+        outline: none;
+        border-color: #7fb4ff;
+        box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.25);
+      }
 
-    /* toast */
-    .toast {
-      position: fixed;
-      left: 50%;
-      bottom: 24px;
-      transform: translateX(-50%) translateY(20px);
-      background: var(--card);
-      border: 1px solid var(--line);
-      padding: 10px 14px;
-      border-radius: 12px;
-      box-shadow: var(--shadow);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.25s, transform 0.25s;
-    }
-    .toast.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-    .list-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin: 8px 0 6px;
-    }
-    .list-title {
-      margin: 0;
-      font-weight: 800;
-      font-size: clamp(18px, 3vw, 22px);
-      letter-spacing: 0.2px;
-      position: relative;
-      background: linear-gradient(90deg, var(--accent), var(--accent-2));
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-    }
-    .list-title::after {
-      content: "";
-      display: block;
-      height: 3px;
-      margin-top: 6px;
-      width: 120px;
-      background: linear-gradient(90deg, var(--accent), transparent);
-      border-radius: 999px;
-      opacity: 0.8;
-    }
-    .list-actions {
-      display: flex;
-      gap: 8px;
-    }
-    .tree-indent {
-      position: relative;
-      padding-left: 12px;
-      margin-left: calc(var(--depth, 0) * 16px);
-      border-left: 1px dashed var(--line);
-    }
-    .toggle {
-      width: 24px;
-      height: 24px;
-      border-radius: 6px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border: 1px solid var(--line);
-      background: #0000000b;
-      font-size: 12px;
-      user-select: none;
-    }
-    .toggle:hover {
-      filter: brightness(1.08);
-    }
-  </style>
+      .btn {
+        cursor: pointer;
+        transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+      }
+      .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 28px rgba(2, 6, 23, 0.45);
+      }
+      .btn.primary {
+        color: #0b1220;
+        background: linear-gradient(180deg, #93c5fd, #60a5fa);
+        border-color: #93c5fd;
+        box-shadow: 0 10px 28px rgba(96, 165, 250, 0.35);
+      }
 
+      .list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .row {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 10px 14px;
+        box-shadow: var(--shadow);
+        transition: transform 0.2s, box-shadow 0.2s;
+        cursor: grab;
+      }
+      .row:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 16px 40px rgba(2, 6, 23, 0.7);
+      }
+
+      .rowHead input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        accent-color: #7fb4ff;
+      }
+
+      .titleText {
+        flex: 1;
+        min-width: 0;
+        font: 600 18px/1.5 inherit;
+        color: var(--text);
+        padding: 6px 0;
+      }
+
+      .muted {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .pill {
+        font-size: 12px;
+        padding: 2px 10px;
+        border-radius: 999px;
+        background: #0b1528;
+        border: 1px solid var(--line);
+        color: #cbd5e1;
+      }
+      .pill.done {
+        color: #34d399;
+        background: #0f1c17;
+        border-color: #1f4739;
+      }
+      .pill.overdue {
+        color: #fda4af;
+        background: #2a1012;
+        border-color: #5e1a21;
+      }
+
+      details > summary {
+        font-size: 14px;
+        color: #a0a9b8;
+        cursor: pointer;
+        user-select: none;
+      }
+      details[open] > summary {
+        color: #93c5fd;
+      }
+
+      .panel {
+        margin-top: 8px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: calc(var(--radius) - 2px);
+        background: #0b1528;
+        display: grid;
+        gap: 12px;
+      }
+
+      .panel input,
+      .panel textarea,
+      .panel select,
+      .panel button {
+        cursor: auto;
+      }
+
+      .quick {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .chip {
+        border: 1px solid var(--line);
+        background: #0b1528;
+        color: #d1d5db;
+        padding: 6px 10px;
+        border-radius: 999px;
+        cursor: pointer;
+      }
+      .chip:hover {
+        box-shadow: 0 6px 16px rgba(2, 6, 23, 0.55);
+        transform: translateY(-1px);
+      }
+      .danger {
+        color: #fecaca;
+        border-color: #5e1a21;
+        background: #2a1012;
+      }
+
+      /* DnDの見た目 */
+      .row.dragging {
+        opacity: 0.6;
+        cursor: grabbing;
+      }
+      .row.drag-over {
+        outline: 2px dashed #7fb4ff;
+        outline-offset: 2px;
+      }
+
+      /* 並べ替えハンドル */
+      .dragHandle {
+        border: none;
+        background: transparent;
+        color: #93c5fd;
+        cursor: grab;
+        font-size: 18px;
+        padding: 6px 8px;
+        border-radius: 8px;
+      }
+      .dragHandle:active {
+        cursor: grabbing;
+      }
+      /* 詳細メモの読みやすさアップ */
+      textarea.input {
+        padding: 14px 16px; /* 内側の余白を増やす */
+        line-height: 1.9; /* 行間を広げる（デフォルト ~1.4〜1.6 よりゆったり） */
+        font-size: 15px; /* 少し大きく */
+        letter-spacing: 0.2px; /* 文字間にほんの少し余裕 */
+        min-height: 140px; /* 初期の表示高さ */
+        resize: vertical; /* 縦方向だけリサイズ可能 */
+        box-sizing: border-box; /* padding を含めて高さ計算 */
+        border-radius: calc(var(--radius) - 2px);
+      }
+
+      /* パネル内のレイアウトも少し広めに */
+      .panel {
+        gap: 14px;
+      }
+      .panel .grid {
+        gap: 12px;
+      }
+    </style>
+  </head>
   <body>
     <div class="container">
       <header>
-        <h1>タスク管理</h1>
+        <h1>タスク</h1>
+        <div class="new" style="flex: 1">
+          <input id="newTitle" class="input" placeholder="新しいタスク…" />
+          <button id="addBtn" class="btn primary">追加</button>
+        </div>
       </header>
 
-      <!-- 追加フォーム -->
-      <section class="card">
-        <form id="form" class="row" autocomplete="off">
-          <input
-            id="title"
-            type="text"
-            placeholder="やることを入力（例：請求書の送付）"
-            required
-            style="flex: 1"
-          />
-          <input
-            id="due"
-            type="datetime-local"
-            style="width: 240px"
-            step="60"
-            autocomplete="off"
-            placeholder="例: 2025-08-24T23:59"
-          />
-          <!-- 期限プリセット（#due の直後に） -->
-          <div
-            class="chips"
-            aria-label="期限プリセット"
-            style="margin-top: 6px"
-          >
-            <div class="chip" onclick="setDueToday()">今日</div>
-            <div class="chip" onclick="setDueTomorrow()">明日</div>
-            <div class="chip" onclick="setDueWeekend()">週末</div>
-            <div class="chip" onclick="clearDue()">期限なし</div>
-          </div>
-
-          <button class="btn btn-accent">追加</button>
-          <span id="msg" class="hint"></span>
-        </form>
-      </section>
-
-      <!-- ツールバー（フィルタ / 並び替え / 表示切替 / 選択モード / CSV） -->
-      <section class="card">
-        <div class="toolbar">
-          <div class="toolbar-left">
-            <div id="filters" class="chips">
-              <div class="chip active" data-f="all">すべて</div>
-              <div class="chip" data-f="open">未</div>
-              <div class="chip" data-f="done">済</div>
-              <div class="chip" data-f="due-today">今日</div>
-              <div class="chip" data-f="overdue">期限切れ</div>
-            </div>
-          </div>
-          <div class="toolbar-right">
-            <label class="hint">並び替え</label>
-            <select id="sort">
-              <option value="updated_desc">更新（新→旧）</option>
-              <option value="due_asc">期日（早い→遅い）</option>
-              <option value="due_desc">期日（遅い→早い）</option>
-              <option value="title_asc">タイトル（A→Z）</option>
-            </select>
-
-            <button id="toggleView" class="btn">表にする</button>
-            <button id="selectModeBtn" class="btn">選択</button>
-            <button id="exportCsv" class="btn">CSV</button>
-          </div>
-        </div>
-
-        <!-- 一括操作バー（選択中のみ表示） -->
-        <div
-          id="bulkBar"
-          class="row"
-          style="gap: 8px; display: none; margin-top: 12px"
-        >
-          <span class="hint" id="bulkCount">0 件選択中</span>
-          <button class="btn" id="bulkOpen">一括「未」に戻す</button>
-          <button class="btn" id="bulkDone">一括「済」にする</button>
-          <button class="btn btn-danger" id="bulkDelete">一括削除</button>
-          <button class="btn" id="bulkClear">選択解除</button>
-        </div>
-      </section>
-
-      <section class="card" id="listHeaderCard">
-        <div class="list-header">
-          <h2 class="list-title">タスク一覧</h2>
-          <div class="list-actions">
-            <button id="expandAll" class="btn">すべて展開</button>
-            <button id="collapseAll" class="btn">すべて折りたたむ</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- タスクリスト / テーブル -->
-      <section class="card" id="listCard">
-        <ul id="list" class="tasks"></ul>
-      </section>
-
-      <section class="card" id="tableCard" style="display: none">
-        <div class="table-wrap">
-          <table id="tbl">
-            <thead>
-              <tr>
-                <th class="sticky">
-                  <input type="checkbox" id="selAll" class="sel" />
-                </th>
-                <th class="sticky">状態</th>
-                <th class="sticky w-title">タイトル</th>
-                <th class="sticky">期日</th>
-                <th class="sticky">更新</th>
-                <th class="sticky">操作</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
-
-    <!-- ✅ ここ（<script> の直前）にモーダルHTMLを置く -->
-    <div
-      id="detailsOverlay"
-      style="
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.35);
-        align-items: center;
-        justify-content: center;
-        z-index: 9999;
-      "
-    >
-      <div
-        style="
-          width: min(680px, 90vw);
-          background: var(--card);
-          color: var(--text);
-          border: 1px solid var(--line);
-          border-radius: 12px;
-          padding: 16px;
-          box-shadow: var(--shadow);
-        "
-      >
-        <h3 style="margin: 0 0 10px">タスクの詳細</h3>
-        <div class="muted" id="detailsTitle" style="margin-bottom: 8px"></div>
-        <textarea
-          id="detailsText"
-          rows="10"
-          style="
-            width: 100%;
-            padding: 10px;
-            border-radius: 8px;
-            border: 1px solid var(--line);
-            background: transparent;
-            color: var(--text);
-          "
-        ></textarea>
-        <div
-          style="
-            display: flex;
-            gap: 8px;
-            justify-content: flex-end;
-            margin-top: 12px;
-          "
-        >
-          <button class="btn" id="detailsClear">クリア</button>
-          <button class="btn" id="detailsCancel">キャンセル</button>
-          <button class="btn btn-accent" id="detailsSave">保存</button>
-        </div>
-      </div>
+      <div id="list" class="list"></div>
     </div>
 
     <script>
       /* ====== 設定 ====== */
       const BASE =
-        "https://wqwkh06vkl.execute-api.ap-northeast-3.amazonaws.com"; // 必要に応じて /Prod を付与
+        "https://wqwkh06vkl.execute-api.ap-northeast-3.amazonaws.com"; // 必要なら /Prod を付与
 
-      /* ====== Util ====== */
-      const $ = (s) => document.querySelector(s);
+      /* ====== ユーティリティ ====== */
+      const $ = (s, el = document) => el.querySelector(s);
+      const el = (tag, attrs = {}) =>
+        Object.assign(document.createElement(tag), attrs);
       const fmt = (iso) => {
         try {
           return new Date(iso).toLocaleString("ja-JP", {
@@ -528,800 +267,432 @@
           return "";
         }
       };
-      const toast = (m) => {
-        const t = $("#toast");
-        t.textContent = m;
-        t.classList.add("show");
-        setTimeout(() => t.classList.remove("show"), 1600);
-      };
-      const toLocalInputValue = (d) => {
-        const dt = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
-        return dt.toISOString().slice(0, 16);
-      };
-      const setDefaultDue = () => {
-        const d = new Date();
-        d.setHours(23, 59, 0, 0); // 今日の23:59に固定
-        $("#due").value = toLocalInputValue(d);
-      };
 
-      // ====== 期限プリセット（23:59固定） ======
-      function endOfDay(d) {
-        d.setHours(23, 59, 0, 0); // 23:59:00
-        return d;
-      }
-      function setDueByDate(d) {
-        $("#due").value = toLocalInputValue(endOfDay(d));
-        $("#title").focus();
-      }
+      /* ====== 状態 ====== */
+      let tasks = []; // 画面が持つタスク配列
+      let dragSrcId = null; // いま掴んでいる行の task_id
+      let dragGuard = false; // mousedown 判定で「このドラッグは禁止」
 
-      // 今日 23:59
-      function setDueToday() {
-        setDueByDate(new Date());
-      }
-
-      // 明日 23:59
-      function setDueTomorrow() {
-        const d = new Date();
-        d.setDate(d.getDate() + 1);
-        setDueByDate(d);
-      }
-
-      // 今週末（土曜）23:59
-      function setDueWeekend() {
-        const d = new Date();
-        const day = d.getDay(); // 0=日,1=月,...,6=土
-        const daysUntilSat = (6 - day + 7) % 7; // 今日が土曜なら 0
-        d.setDate(d.getDate() + daysUntilSat);
-        setDueByDate(d);
-      }
-
-      // 期限なし（空にする）
-      function clearDue() {
-        $("#due").value = "";
-        $("#title").focus();
-      }
-
-      async function request(path, opt = {}) {
-        const init = { ...opt };
-        // ボディがあるときだけ Content-Type を付ける（DELETE/GET は付けない）
+      /* ====== API ====== */
+      async function api(path, opt = {}) {
+        const init = { cache: "no-store", ...opt };
         if (init.body) {
           init.headers = {
             ...(init.headers || {}),
             "Content-Type": "application/json",
           };
         }
-        const res = await fetch(`${BASE}${path}`, init);
-        if (!res.ok) {
-          const text = await res.text().catch(() => res.statusText);
-          throw new Error(`${res.status} ${res.statusText} :: ${text}`);
-        }
-        const ct = res.headers.get("content-type") || "";
-        return ct.includes("application/json") ? res.json() : res.text();
+        const r = await fetch(BASE + path, init);
+        if (!r.ok) throw new Error(await r.text());
+        if (r.status === 204) return null; // 204は本文なし
+        const ct = r.headers.get("content-type") || "";
+        return ct.includes("application/json") ? r.json() : r.text();
       }
+      const listTasks = () => api("/tasks");
+      const createTask = (title) =>
+        api("/tasks", { method: "POST", body: JSON.stringify({ title }) });
+      const patchTask = (id, body) =>
+        api(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+      const delTask = (id) => api(`/tasks/${id}`, { method: "DELETE" });
 
-      /* ====== 状態 ====== */
-      let allItems = [];
-      let view = localStorage.getItem("view") || "list"; // 'list' | 'table'
-      let filter = localStorage.getItem("filter") || "all";
-      let sortKey = localStorage.getItem("sortKey") || "updated_desc";
-      let selecting = false;
-      const selected = new Set();
-
-      /* --- 追加: 階層の開閉状態を保持（親IDの集合） --- */
-      const expanded = new Set(
-        JSON.parse(localStorage.getItem("expanded") || "[]")
-      );
-      function setExpandedPersist() {
-        localStorage.setItem("expanded", JSON.stringify([...expanded]));
-      }
-
-      /* --- 追加: フラット配列から木を作る --- */
-      function buildTree(items) {
-        const byId = new Map();
-        items.forEach((it) => {
-          it.children = [];
-          byId.set(it.task_id, it);
-        });
-        const roots = [];
-        for (const it of items) {
-          const pid = it.parent_id;
-          if (pid && byId.has(pid)) byId.get(pid).children.push(it);
-          else roots.push(it);
-        }
-        // 子は任意に並べ替え（親と同じキー）
-        const sortFn = (a, b) => {
-          if (sortKey === "updated_desc")
-            return String(b.updated_at).localeCompare(String(a.updated_at));
-          if (sortKey === "due_asc")
-            return String(a.due_date || "9").localeCompare(
-              String(b.due_date || "9")
-            );
-          if (sortKey === "due_desc")
-            return String(b.due_date || "0").localeCompare(
-              String(a.due_date || "0")
-            );
-          if (sortKey === "title_asc")
-            return String(a.title || "").localeCompare(
-              String(b.title || ""),
-              "ja"
-            );
-          return 0;
-        };
-        const sortRec = (nodes) => {
-          nodes.sort(sortFn);
-          nodes.forEach((n) => sortRec(n.children));
-        };
-        sortRec(roots);
-        return roots;
-      }
-
-      /* ====== フィルタ/ソート ====== */
-      function applyFilter(items) {
-        const now = new Date();
-        const startToday = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate()
+      /* ====== DnD（ドラッグ&ドロップ）補助 ====== */
+      // 入力・ボタン・リンク・summary・.panel 内など “ドラッグ開始禁止” な場所判定
+      function isInteractive(el) {
+        return !!el.closest(
+          "input, textarea, select, button, a, label, summary, .btn, .chip, .panel"
         );
-        const sameDay = (a, b) =>
-          a.getFullYear() == b.getFullYear() &&
-          a.getMonth() == b.getMonth() &&
-          a.getDate() == b.getDate();
+      }
+      // .panel 内でテキスト選択が存在するか
+      function hasTextSelectionInPanel() {
+        const sel = window.getSelection?.();
+        if (!sel || sel.isCollapsed) return false;
+        const n =
+          sel.anchorNode &&
+          (sel.anchorNode.nodeType === 1
+            ? sel.anchorNode
+            : sel.anchorNode.parentElement);
+        return !!n?.closest?.(".panel");
+      }
+      // mousedown 時点で “掴んでよいか” を判断し、一時的に draggable を切り替え
+      function guardDragByTarget(e) {
+        dragGuard = isInteractive(e.target) || hasTextSelectionInPanel();
+        this.draggable = !dragGuard; // 禁止なら行をドラッグ不可にして dragstart 自体を起こさない
+      }
+      function resetDragGuard() {
+        dragGuard = false;
+        this.draggable = true;
+      }
+      // 行の dragstart（最終チェック＆セットアップ）
+      function onRowDragStart(e) {
+        if (dragGuard || hasTextSelectionInPanel()) {
+          e.preventDefault();
+          return;
+        }
+        const r = e.currentTarget;
+        dragSrcId = r.dataset.id;
+        r.classList.add("dragging");
+        const dt = e.dataTransfer;
+        if (dt) {
+          try {
+            dt.setData("text/plain", dragSrcId);
+          } catch {}
+          dt.effectAllowed = "move";
+        } // Safari対策
+      }
+      function onDragOver(e) {
+        e.preventDefault(); // これが無いと drop が発火しない
+        this.classList.add("drag-over");
+        const dt = e.dataTransfer;
+        if (dt) dt.dropEffect = "move";
+      }
+      function onDragLeave() {
+        this.classList.remove("drag-over");
+      }
+      function onDrop(e) {
+        e.preventDefault();
+        this.classList.remove("drag-over");
 
-        return items.filter((it) => {
-          if (filter === "open") return it.status !== "done";
-          if (filter === "done") return it.status === "done";
-          if (filter === "overdue") {
-            if (!it.due_date) return false;
-            return it.status !== "done" && new Date(it.due_date) < now;
-          }
-          if (filter === "due-today") {
-            if (!it.due_date) return false;
-            return sameDay(new Date(it.due_date), now);
-          }
-          return true;
+        const dstId = this.dataset.id;
+        if (!dragSrcId || dragSrcId === dstId) return;
+
+        // 1) 配列内で入れ替え（楽観的更新）
+        const from = tasks.findIndex((t) => t.task_id === dragSrcId);
+        const to = tasks.findIndex((t) => t.task_id === dstId);
+        if (from < 0 || to < 0) return;
+
+        const moved = tasks.splice(from, 1)[0];
+        tasks.splice(to, 0, moved);
+        render();
+
+        // 2) 並び順を保存（失敗時は戻す）
+        persistNewSort(to).catch(() => {
+          refresh();
+          alert("並び替えの保存に失敗しました");
         });
       }
-
-      function applySort(items) {
-        const arr = items.slice();
-        if (sortKey === "updated_desc")
-          arr.sort((a, b) =>
-            String(b.updated_at).localeCompare(String(a.updated_at))
-          );
-        if (sortKey === "due_asc")
-          arr.sort((a, b) =>
-            String(a.due_date || "9").localeCompare(String(b.due_date || "9"))
-          );
-        if (sortKey === "due_desc")
-          arr.sort((a, b) =>
-            String(b.due_date || "0").localeCompare(String(a.due_date || "0"))
-          );
-        if (sortKey === "title_asc")
-          arr.sort((a, b) =>
-            String(a.title || "").localeCompare(String(b.title || ""), "ja")
-          );
-        return arr;
+      function onDragEnd() {
+        dragSrcId = null;
+        document
+          .querySelectorAll(".row.drag-over, .row.dragging")
+          .forEach((el) => el.classList.remove("drag-over", "dragging"));
       }
 
-      function filteredSorted() {
-        return applySort(applyFilter(allItems));
+      // 並び順保存：近傍の sort から “中間値” を付与
+      async function persistNewSort(dropIndex) {
+        const prev = tasks[dropIndex - 1]?.sort ?? null;
+        const next = tasks[dropIndex + 1]?.sort ?? null;
+        const cur = tasks[dropIndex];
+        let newSort;
+
+        if (prev == null && next == null) newSort = 0; // 要素が1件だけ
+        else if (prev == null) newSort = Number(next) - 1; // 先頭に入った
+        else if (next == null) newSort = Number(prev) + 1; // 末尾に入った
+        else newSort = (Number(prev) + Number(next)) / 2; // 間に入った
+
+        // 詰まり過ぎたら再採番
+        if (
+          !isFinite(newSort) ||
+          (prev != null &&
+            next != null &&
+            Math.abs(Number(next) - Number(prev)) < 1e-6)
+        ) {
+          await reindexSorts();
+          return;
+        }
+
+        cur.sort = newSort; // ローカルも更新
+        await patchTask(cur.task_id, { sort: newSort }); // サーバ保存（Number→DynamoDBはサーバでDecimal変換）
+      }
+
+      // まとめて再採番（0,1000,2000,...）
+      async function reindexSorts() {
+        const step = 1000;
+        const updates = [];
+        tasks.forEach((t, i) => {
+          const s = i * step;
+          if (t.sort !== s) {
+            t.sort = s;
+            updates.push(patchTask(t.task_id, { sort: s }));
+          }
+        });
+        if (updates.length) await Promise.all(updates);
       }
 
       /* ====== 描画 ====== */
-      function render(items = filteredSorted()) {
-        // ビュー切替
-        $("#listCard").style.display = view === "list" ? "block" : "none";
-        $("#tableCard").style.display = view === "table" ? "block" : "none";
-        $("#toggleView").textContent =
-          view === "list" ? "表にする" : "一覧にする";
+      function render() {
+        const list = $("#list");
+        list.innerHTML = "";
 
-        // 選択UI
-        $("#bulkBar").style.display = selecting ? "flex" : "none";
-        $("#selAll").checked =
-          selecting &&
-          items.length > 0 &&
-          items.every((it) => selected.has(it.task_id));
-        $("#bulkCount").textContent = `${selected.size} 件選択中`;
+        const roots = tasks.filter((t) => !t.parent_id); // 親だけ（サブタスク廃止）
 
-        // フィルタUI
-        document.querySelectorAll("#filters .chip").forEach((ch) => {
-          ch.classList.toggle("active", ch.dataset.f === filter);
-        });
+        for (const it of roots) {
+          const row = el("div", { className: "row" });
+          row.dataset.id = it.task_id;
+          row.dataset.sort = it.sort ?? 0;
 
-        // ソートUI
-        $("#sort").value = sortKey;
+          // どこでも掴めるが、入力や詳細の選択では発火しないようガード
+          row.draggable = true;
+          row.addEventListener("mousedown", guardDragByTarget);
+          row.addEventListener("mouseup", resetDragGuard);
+          row.addEventListener("mouseleave", resetDragGuard);
+          row.addEventListener("dragstart", onRowDragStart);
+          row.addEventListener("dragend", onDragEnd);
 
-        if (view === "list") {
-          renderList(items);
-        } else {
-          renderTable(items);
-        }
-      }
+          row.addEventListener("dragover", onDragOver);
+          row.addEventListener("dragleave", onDragLeave);
+          row.addEventListener("drop", onDrop);
 
-      function statusBadge(it) {
-        const s = document.createElement("span");
-        s.className = `badge ${
-          it.status === "done" ? "badge-done" : "badge-open"
-        }`;
-        s.textContent = it.status === "done" ? "済" : "未";
-        return s;
-      }
+          // ヘッダ（チェック・タイトル表示専用・期日・バッジ）
+          const head = el("div", { className: "rowHead" });
 
-      function renderList(items) {
-        const ul = $("#list");
-        ul.innerHTML = "";
-        if (items.length === 0) {
-          ul.innerHTML = `<li class="muted" style="text-align:center;padding:24px">該当するタスクはありません</li>`;
-          return;
-        }
-
-        const roots = buildTree(items);
-
-        const addRow = (it, depth) => {
-          const li = document.createElement("li");
-          li.className = "item";
-          li.style.setProperty("--depth", depth);
-
-          const left = document.createElement("div");
-          left.className = "left tree-indent";
-          const right = document.createElement("div");
-          right.className = "right";
-
-          // 選択チェック
-          if (selecting) {
-            const cb = document.createElement("input");
-            cb.type = "checkbox";
-            cb.className = "sel";
-            cb.checked = selected.has(it.task_id);
-            cb.onchange = () => {
-              cb.checked
-                ? selected.add(it.task_id)
-                : selected.delete(it.task_id);
-              render();
-            };
-            left.append(cb);
-          }
-
-          // 折りたたみトグル
-          if (it.children && it.children.length > 0) {
-            const tgl = document.createElement("div");
-            tgl.className = "toggle";
-            tgl.textContent = expanded.has(it.task_id) ? "▼" : "▶";
-            tgl.title = "展開/折りたたみ";
-            tgl.onclick = () => {
-              if (expanded.has(it.task_id)) expanded.delete(it.task_id);
-              else expanded.add(it.task_id);
-              setExpandedPersist();
-              render();
-            };
-            left.append(tgl);
-          } else {
-            // 子がない場合のプレースホルダ（スペーサ）
-            const sp = document.createElement("div");
-            sp.style.width = "24px";
-            left.append(sp);
-          }
-
-          // 状態バッジ
-          const badge = statusBadge(it);
-
-          // タイトル
-          const title = document.createElement("div");
-          title.className = "title";
-          title.textContent = it.title || "(no title)";
-          if (it.status === "done") title.classList.add("strike");
-          title.title = "ダブルクリックで編集";
-          title.ondblclick = () => inlineEditTitle(title, it);
-
-          // ★ ここに追加
-          if (it.details) {
-            const tag = document.createElement("span");
-            tag.className = "badge badge-open"; // 既存バッジの見た目を活用
-            tag.textContent = "詳細あり";
-            left.append(tag); // タイトルの右側に付ける
-          }
-          // 期日
-          const due = document.createElement("span");
-          if (it.due_date) {
-            due.className = "muted due";
-            due.textContent = fmt(it.due_date);
-          } else {
-            due.className = "muted due";
-            due.textContent = "期限なし";
-          }
-          due.title = "ダブルクリックで編集";
-          due.ondblclick = () => inlineEditDue(due, it);
-
-          left.append(badge, title, due);
-
-          // 操作ボタン
-          const btnAddChild = document.createElement("button");
-          btnAddChild.className = "btn";
-          btnAddChild.textContent = "サブタスク";
-          btnAddChild.title = "このタスクの配下にサブタスクを追加";
-          btnAddChild.onclick = () => addSubtask(it);
-
-          // ★ここに詳細ボタンを追加
-          const btnDetails = document.createElement("button");
-          btnDetails.className = "btn";
-          btnDetails.textContent = it.details ? "詳細(あり)" : "詳細";
-          btnDetails.title = "このタスクの詳細を表示/編集";
-          btnDetails.onclick = () => openDetailsModal(it);
-
-          const btnDone = document.createElement("button");
-          btnDone.className = "btn";
-          btnDone.textContent = it.status === "done" ? "戻す" : "完了";
-          btnDone.onclick = () => toggleDone(it);
-
-          const btnDel = document.createElement("button");
-          btnDel.type = "button";
-          btnDel.className = "btn btn-danger";
-          btnDel.textContent = "削除";
-          btnDel.onclick = async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            await delTaskCascade(it); // 階層化を使ってないなら delTask(it)
+          const chk = el("input", { type: "checkbox" });
+          chk.checked = it.status === "done";
+          chk.onchange = async () => {
+            await patchTask(it.task_id, {
+              status: chk.checked ? "done" : "open",
+            });
+            await refresh();
           };
 
-          right.append(btnAddChild, btnDetails, btnDone, btnDel);
-          li.append(left, right);
-          ul.append(li);
-
-          // 子の描画（折りたたみチェック）
-          if (
-            it.children &&
-            it.children.length > 0 &&
-            expanded.has(it.task_id)
-          ) {
-            for (const ch of it.children) addRow(ch, depth + 1);
-          }
-        };
-
-        for (const r of roots) addRow(r, 0);
-      }
-
-      function renderTable(items) {
-        const tb = $("#tbl tbody");
-        tb.innerHTML = "";
-        if (items.length === 0) {
-          tb.innerHTML = `<tr><td colspan="6" class="muted">該当するタスクはありません</td></tr>`;
-          return;
-        }
-
-        for (const it of items) {
-          const tr = document.createElement("tr");
-
-          // 選択
-          const tdSel = document.createElement("td");
-          const cb = document.createElement("input");
-          cb.type = "checkbox";
-          cb.className = "sel";
-          cb.disabled = !selecting;
-          cb.checked = selected.has(it.task_id);
-          cb.onchange = () => {
-            cb.checked ? selected.add(it.task_id) : selected.delete(it.task_id);
-            render();
-          };
-          tdSel.append(cb);
-
-          const tdStatus = document.createElement("td");
-          tdStatus.append(statusBadge(it));
-
-          const tdTitle = document.createElement("td");
-          tdTitle.className = "w-title";
-          const t = document.createElement("span");
-          t.textContent = it.title || "(no title)";
-          if (it.status === "done") t.classList.add("strike");
-          t.title = "ダブルクリックで編集";
-          t.ondblclick = () => inlineEditTitle(t, it);
-          tdTitle.append(t);
-
-          const tdDue = document.createElement("td");
-          tdDue.textContent = it.due_date ? fmt(it.due_date) : "";
-          const tdUpd = document.createElement("td");
-          tdUpd.textContent = fmt(it.updated_at);
-
-          const tdOps = document.createElement("td");
-          const b1 = document.createElement("button");
-          b1.className = "btn";
-          b1.textContent = it.status === "done" ? "戻す" : "完了";
-          b1.onclick = () => toggleDone(it);
-          const b2 = document.createElement("button");
-          b2.className = "btn btn-danger";
-          b2.textContent = "削除";
-          b2.onclick = () => delTask(it);
-          tdOps.append(b1, b2);
-
-          tr.append(tdSel, tdStatus, tdTitle, tdDue, tdUpd, tdOps);
-          tb.append(tr);
-        }
-      }
-
-      // サブタスク追加
-      async function addSubtask(parent) {
-        const t = prompt("サブタスクのタイトル");
-        if (!t) return;
-        await request("/tasks", {
-          method: "POST",
-          body: JSON.stringify({ title: t, parent_id: parent.task_id }),
-        });
-        expanded.add(parent.task_id); // 追加直後は展開状態に
-        setExpandedPersist();
-        toast("サブタスクを追加しました");
-        await load();
-      }
-
-      // 子孫IDを集める（allItems から）
-      function collectDescendantIds(rootId) {
-        const byParent = new Map();
-        for (const it of allItems) {
-          if (!it.parent_id) continue;
-          if (!byParent.has(it.parent_id)) byParent.set(it.parent_id, []);
-          byParent.get(it.parent_id).push(it.task_id);
-        }
-        const out = [];
-        const stack = [rootId];
-        while (stack.length) {
-          const cur = stack.pop();
-          const kids = byParent.get(cur) || [];
-          for (const k of kids) {
-            out.push(k);
-            stack.push(k);
-          }
-        }
-        return out; // 直下～孫以降すべて
-      }
-
-      // 親ごと一括削除
-      async function delTaskCascade(it) {
-        const descendants = collectDescendantIds(it.task_id);
-        const count = 1 + descendants.length;
-        if (
-          !confirm(
-            `このタスクと配下 ${descendants.length} 件、計 ${count} 件を削除します。よろしいですか？`
-          )
-        )
-          return;
-
-        // 親→子の順でも子→親の順でもOK（個別 DELETE のため）
-        // 失敗を恐れず直列で順次実行
-        try {
-          // まず子孫を削除
-          for (const id of descendants) {
-            await request(`/tasks/${id}`, { method: "DELETE" });
-          }
-          // 最後に親
-          await request(`/tasks/${it.task_id}`, { method: "DELETE" });
-          toast("削除しました");
-        } catch (e) {
-          console.error(e);
-          toast("一部の削除に失敗しました");
-        }
-        await load();
-      }
-
-      /* ====== UI操作 ====== */
-      function inlineEditTitle(node, it) {
-        const input = document.createElement("input");
-        input.type = "text";
-        input.value = it.title || "";
-        input.style.minWidth = "220px";
-        node.replaceWith(input);
-        input.focus();
-        input.select();
-
-        const finish = async (commit) => {
-          const v = input.value.trim();
-          if (commit && v !== (it.title || "")) {
-            await request(`/tasks/${it.task_id}`, {
-              method: "PATCH",
-              body: JSON.stringify({ title: v }),
-            });
-            toast("タイトルを更新しました");
-            await load();
-          } else {
-            await load(); // 再描画で元に戻す
-          }
-        };
-        input.onkeydown = (e) => {
-          if (e.key === "Enter") finish(true);
-          if (e.key === "Escape") finish(false);
-        };
-        input.onblur = () => finish(true);
-      }
-
-      async function toggleDone(it) {
-        const next = it.status === "done" ? "open" : "done";
-        await request(`/tasks/${it.task_id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ status: next }),
-        });
-        toast(next === "done" ? "完了しました" : "未に戻しました");
-        await load();
-      }
-
-      async function delTask(it) {
-        if (!confirm("このタスクを削除しますか？")) return;
-        await request(`/tasks/${it.task_id}`, { method: "DELETE" });
-        toast("削除しました");
-        await load();
-      }
-
-      // 一括操作（順次実行）
-      async function bulkDo(kind) {
-        const ids = Array.from(selected);
-        if (ids.length === 0) return;
-        if (
-          kind === "delete" &&
-          !confirm(`${ids.length}件を削除します。よろしいですか？`)
-        )
-          return;
-
-        for (const id of ids) {
-          try {
-            if (kind === "delete")
-              await request(`/tasks/${id}`, { method: "DELETE" });
-            if (kind === "open")
-              await request(`/tasks/${id}`, {
-                method: "PATCH",
-                body: JSON.stringify({ status: "open" }),
-              });
-            if (kind === "done")
-              await request(`/tasks/${id}`, {
-                method: "PATCH",
-                body: JSON.stringify({ status: "done" }),
-              });
-          } catch (e) {
-            console.error(e);
-          }
-        }
-        toast(kind === "delete" ? "削除しました" : "更新しました");
-        selected.clear();
-        await load();
-      }
-
-      // CSV（選択があれば選択分／無ければ現在の絞り込み分）
-      function exportCsv() {
-        const items = filteredSorted();
-        const pick = selected.size
-          ? items.filter((it) => selected.has(it.task_id))
-          : items;
-        const rows = [
-          ["id", "状態", "タイトル", "期日", "更新"],
-          ...pick.map((it) => [
-            it.task_id,
-            it.status === "done" ? "済" : "未",
-            it.title || "",
-            it.due_date || "",
-            it.updated_at || "",
-          ]),
-        ];
-        const csv =
-          "\ufeff" +
-          rows
-            .map((r) =>
-              r
-                .map((x) => {
-                  const s = String(x ?? "");
-                  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-                })
-                .join(",")
-            )
-            .join("\n");
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = `tasks_${new Date().toISOString().slice(0, 10)}.csv`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-      }
-
-      /* ====== データ取得 ====== */
-      async function load() {
-        try {
-          allItems = await request("/tasks");
-          render();
-        } catch (e) {
-          console.error(e);
-          $(
-            "#list"
-          ).innerHTML = `<li class="muted" style="text-align:center;padding:24px">読み込みに失敗: ${e.message}</li>`;
-        }
-      }
-
-      function inlineEditDue(node, it) {
-        const input = document.createElement("input");
-        input.type = "datetime-local";
-        input.value = it.due_date
-          ? toLocalInputValue(new Date(it.due_date))
-          : "";
-        input.style.minWidth = "180px";
-        node.replaceWith(input);
-        input.focus();
-
-        const finish = async (commit) => {
-          const v = input.value;
-          if (commit) {
-            const payload = {};
-            if (v) {
-              payload.due_date = new Date(v).toISOString();
-            } else {
-              payload.due_date = ""; // 空なら削除
-            }
-            await request(`/tasks/${it.task_id}`, {
-              method: "PATCH",
-              body: JSON.stringify(payload),
-            });
-            toast("期限を更新しました");
-          }
-          await load();
-        };
-
-        input.onkeydown = (e) => {
-          if (e.key === "Enter") finish(true);
-          if (e.key === "Escape") finish(false);
-        };
-        input.onblur = () => finish(true);
-      }
-
-      let detailsTarget = null; // 今開いているタスク
-
-      function openDetailsModal(it) {
-        detailsTarget = it;
-        $("#detailsTitle").textContent = it.title || "(no title)";
-        $("#detailsText").value = it.details || "";
-        $("#detailsOverlay").style.display = "flex";
-        $("#detailsText").focus();
-      }
-
-      function closeDetailsModal() {
-        $("#detailsOverlay").style.display = "none";
-        detailsTarget = null;
-      }
-
-      // 保存
-      $("#detailsSave").onclick = async () => {
-        if (!detailsTarget) return;
-        const text = $("#detailsText").value.trim();
-        const payload = { details: text || "" }; // 空なら削除扱い
-        await request(`/tasks/${detailsTarget.task_id}`, {
-          method: "PATCH",
-          body: JSON.stringify(payload),
-        });
-        toast("詳細を保存しました");
-        closeDetailsModal();
-        await load();
-      };
-
-      // クリア（＝削除）
-      $("#detailsClear").onclick = async () => {
-        if (!detailsTarget) return;
-        await request(`/tasks/${detailsTarget.task_id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ details: "" }),
-        });
-        toast("詳細をクリアしました");
-        closeDetailsModal();
-        await load();
-      };
-
-      // キャンセル
-      $("#detailsCancel").onclick = () => closeDetailsModal();
-
-      // オーバーレイ外クリックで閉じる（お好み）
-      $("#detailsOverlay").addEventListener("click", (e) => {
-        if (e.target.id === "detailsOverlay") closeDetailsModal();
-      });
-
-      // Escで閉じる
-      window.addEventListener("keydown", (e) => {
-        if (
-          e.key === "Escape" &&
-          $("#detailsOverlay").style.display === "flex"
-        ) {
-          closeDetailsModal();
-        }
-      });
-
-      /* ====== イベント ====== */
-      // 追加
-      $("#form").addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const title = $("#title").value.trim();
-        const dueLocal = $("#due").value;
-        if (!title) return;
-        const payload = { title };
-        if (dueLocal) payload.due_date = new Date(dueLocal).toISOString();
-        try {
-          await request("/tasks", {
-            method: "POST",
-            body: JSON.stringify(payload),
+          const titleView = el("div", {
+            className: "titleText",
+            textContent: it.title,
           });
-          $("#form").reset();
-          setDefaultDue();
-          toast("追加しました");
-          await load();
-        } catch (e) {
-          $("#msg").textContent = `追加に失敗: ${e.message}`;
-          setTimeout(() => ($("#msg").textContent = ""), 1800);
+
+          const due = el("div", { className: "muted" });
+          if (it.due_date) due.textContent = fmt(it.due_date);
+
+          const badge = el("span", {
+            className:
+              "pill " +
+              (it.status === "done" ? "done" : isOverdue(it) ? "overdue" : ""),
+          });
+          badge.textContent =
+            it.status === "done" ? "完了" : isOverdue(it) ? "期限切れ" : "未";
+
+          head.append(chk, titleView, due, badge);
+          row.append(head);
+
+          // 詳細パネル
+          const det = el("details");
+          const sum = el("summary");
+          sum.textContent = "詳細を開く"; // 初期表示
+
+          // ▼ 開閉状態に応じてラベルを変えるイベント
+          det.addEventListener("toggle", () => {
+            sum.textContent = det.open ? "詳細を閉じる" : "詳細を開く";
+          });
+
+          det.append(sum);
+
+          const panel = el("div", { className: "panel" });
+          // 詳細内の入力からの dragstart は無効化（保険）
+          panel.addEventListener("dragstart", (e) => {
+            if (
+              e.target &&
+              (e.target.tagName === "INPUT" ||
+                e.target.tagName === "TEXTAREA" ||
+                e.target.isContentEditable)
+            ) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          });
+
+          // 2-0 タイトル編集（詳細を開いた時だけ）
+          const tGrid = el("div", { className: "grid" });
+          const titleEdit = el("input", {
+            className: "input",
+            value: it.title,
+            placeholder: "タスク名",
+          });
+          titleEdit.setAttribute("draggable", "false");
+          titleEdit.addEventListener("dragstart", (e) => e.preventDefault());
+          const saveTitle = el("button", {
+            className: "btn",
+            textContent: "名前を保存",
+          });
+          saveTitle.onclick = async () => {
+            const v = titleEdit.value.trim();
+            if (!v || v === it.title) return;
+            await patchTask(it.task_id, { title: v });
+            titleView.textContent = v;
+            it.title = v;
+          };
+          titleEdit.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") saveTitle.click();
+          });
+          tGrid.append(titleEdit, saveTitle);
+
+          // 2-1 期日編集
+          const dueGrid = el("div", { className: "grid" });
+          const dueInput = el("input", {
+            className: "input",
+            type: "datetime-local",
+          });
+          dueInput.setAttribute("draggable", "false");
+          dueInput.addEventListener("dragstart", (e) => e.preventDefault());
+          if (it.due_date) {
+            const d = new Date(it.due_date);
+            dueInput.value = new Date(
+              d.getTime() - d.getTimezoneOffset() * 60000
+            )
+              .toISOString()
+              .slice(0, 16);
+          }
+          const saveDue = el("button", {
+            className: "btn",
+            textContent: "保存",
+          });
+          saveDue.onclick = async () => {
+            const v = dueInput.value ? new Date(dueInput.value) : null;
+            await patchTask(it.task_id, {
+              due_date: v
+                ? new Date(
+                    v.getTime() + v.getTimezoneOffset() * 60000
+                  ).toISOString()
+                : null,
+            });
+            await refresh();
+          };
+          dueGrid.append(dueInput, saveDue);
+
+          // 2-2 クイック期限
+          const quick = el("div", { className: "quick" });
+          [
+            ["今日", endOf("today")],
+            ["明日", endOf("tomorrow")],
+            ["週末", endOf("weekend")],
+            ["期限なし", null],
+          ].forEach(([label, iso]) => {
+            const c = el("button", { className: "chip", textContent: label });
+            c.onclick = async () => {
+              await patchTask(it.task_id, { due_date: iso });
+              await refresh();
+            };
+            quick.append(c);
+          });
+
+          // 2-3 詳細メモ
+          const memo = el("textarea", {
+            className: "input",
+            rows: 3,
+            placeholder: "詳細",
+            value: it.details || "",
+          });
+          memo.setAttribute("draggable", "false");
+          memo.addEventListener("dragstart", (e) => e.preventDefault());
+
+          /* ▼ 追加：最初に合わせ、以降は入力のたびに伸縮 */
+          autoResizeTextarea(memo);
+          memo.addEventListener("input", () => autoResizeTextarea(memo));
+
+          memo.onchange = async () => {
+            await patchTask(it.task_id, { details: memo.value || null });
+          };
+
+          // 2-4 危険操作
+          const danger = el("div", { className: "quick" });
+          if (it.status === "done") {
+            const backBtn = el("button", {
+              className: "chip",
+              textContent: "未完に戻す",
+            });
+            backBtn.onclick = async () => {
+              await patchTask(it.task_id, { status: "open" });
+              await refresh();
+            };
+            danger.append(backBtn);
+          }
+          const delBtn = el("button", {
+            className: "chip danger",
+            textContent: "タスクを削除",
+          });
+          delBtn.onclick = async () => {
+            if (!confirm("このタスクを削除しますか？")) return;
+            const prev = tasks.slice();
+            tasks = tasks.filter((t) => t.task_id !== it.task_id);
+            render();
+            try {
+              await delTask(it.task_id);
+            } catch {
+              tasks = prev;
+              render();
+              alert("削除に失敗しました");
+            }
+          };
+          danger.append(delBtn);
+
+          panel.append(tGrid, dueGrid, quick, memo, danger);
+          det.append(panel);
+          row.append(det);
+          list.append(row);
+        }
+      }
+
+      // テキストエリアを内容に合わせて自動伸縮
+      function autoResizeTextarea(el, max = 600) {
+        el.style.height = "auto";
+        el.style.height = Math.min(max, el.scrollHeight) + "px";
+      }
+
+      /* ====== 期限ヘルパ ====== */
+      function endOf(kind) {
+        const d = new Date();
+        if (kind === "tomorrow") d.setDate(d.getDate() + 1);
+        if (kind === "weekend") {
+          const day = d.getDay();
+          const diff = (6 - day + 7) % 7 || 0;
+          d.setDate(d.getDate() + diff);
+        }
+        d.setHours(23, 59, 0, 0);
+        return (
+          new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+            .toISOString()
+            .slice(0, 19) + "Z"
+        );
+      }
+      function isOverdue(it) {
+        return (
+          it.due_date &&
+          it.status !== "done" &&
+          new Date(it.due_date) < new Date()
+        );
+      }
+
+      /* ====== 追加：ボタン/Enter ====== */
+      async function addNewTask() {
+        const input = $("#newTitle");
+        const t = input.value.trim();
+        if (!t) return;
+        await createTask(t);
+        input.value = "";
+        await refresh();
+      }
+      $("#addBtn").onclick = addNewTask;
+      const titleInput = $("#newTitle");
+      let composing = false;
+      titleInput.addEventListener("compositionstart", () => (composing = true));
+      titleInput.addEventListener("compositionend", () => (composing = false));
+      titleInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !composing) {
+          e.preventDefault();
+          addNewTask();
         }
       });
 
-      // フィルタ
-      document.querySelectorAll("#filters .chip").forEach(
-        (ch) =>
-          (ch.onclick = () => {
-            filter = ch.dataset.f;
-            localStorage.setItem("filter", filter);
-            render();
-          })
-      );
-
-      // 並び替え
-      $("#sort").onchange = (e) => {
-        sortKey = e.target.value;
-        localStorage.setItem("sortKey", sortKey);
-        render();
-      };
-
-      // 表示切替
-      $("#toggleView").onclick = () => {
-        view = view === "list" ? "table" : "list";
-        localStorage.setItem("view", view);
-        render();
-      };
-
-      // 選択モード
-      $("#selectModeBtn").onclick = () => {
-        selecting = !selecting;
-        if (!selecting) selected.clear();
-        $("#selectModeBtn").textContent = selecting ? "選択終了" : "選択";
-        render();
-      };
-
-      // 一括操作
-      $("#bulkOpen").onclick = () => bulkDo("open");
-      $("#bulkDone").onclick = () => bulkDo("done");
-      $("#bulkDelete").onclick = () => bulkDo("delete");
-      $("#bulkClear").onclick = () => {
-        selected.clear();
-        render();
-      };
-
-      // テーブルの全選択
-      $("#selAll").onchange = (e) => {
-        const items = filteredSorted();
-        if (e.target.checked) {
-          items.forEach((it) => selected.add(it.task_id));
-        } else {
-          selected.clear();
+      /* ====== 起動：初回は sort の初期採番も実施 ====== */
+      async function refresh() {
+        tasks = await listTasks();
+        if (tasks.some((t) => t.sort == null)) {
+          // sort が無いタスクがあれば一度だけ採番
+          await reindexSorts();
+          tasks = await listTasks(); // 採番後の最新を取り直す
         }
         render();
-      };
+      }
 
-      // CSV
-      $("#exportCsv").onclick = exportCsv;
-
-      // 起動
-      (async () => {
-        setDefaultDue();
-        await load();
-      })();
-      $("#expandAll").onclick = () => {
-        // すべての親IDを expanded に入れる
-        allItems.forEach((it) => {
-          if (allItems.some((ch) => ch.parent_id === it.task_id))
-            expanded.add(it.task_id);
-        });
-        setExpandedPersist();
-        render();
-      };
-      $("#collapseAll").onclick = () => {
-        expanded.clear();
-        setExpandedPersist();
-        render();
-      };
+      refresh();
     </script>
   </body>
 </html>
