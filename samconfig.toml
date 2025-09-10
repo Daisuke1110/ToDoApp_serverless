@@ -11,3 +11,7 @@ region = "ap-northeast-3"
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
+s3_prefix = "NewToDoApp"
+parameter_overrides = "UserId=\"me\" FrontendBaseUrl=\"https://dvj7er4qsb0m.cloudfront.net/\" FrontendOrigin=\"https://dvj7er4qsb0m.cloudfront.net\" CognitoDomainPrefix=\"todopp-auth-daisuke1110\""
+image_repositories = []
+disable_rollback = true

@@ -1,0 +1,23 @@
+{
+  "name": "todoapp_serverless",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Daisuke1110/ToDoApp_serverless.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Daisuke1110/ToDoApp_serverless/issues"
+  },
+  "homepage": "https://github.com/Daisuke1110/ToDoApp_serverless#readme",
+  "dependencies": {
+    "aws-amplify": "^5.3.27"
+  }
+}

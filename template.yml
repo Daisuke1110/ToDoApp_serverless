@@ -7,19 +7,26 @@ Globals:
     Timeout: 10
     MemorySize: 256
     Tracing: Active
-  Api:
-    Cors:
-      AllowMethods: "'GET,POST,PATCH,DELETE,OPTIONS'"
-      AllowHeaders: "'Content-Type'"
-      AllowOrigin: "'https://todo-frontend-3047321f.s3.ap-northeast-3.amazonaws.com'"
 
 Parameters:
   UserId:
     Type: String
     Default: me
     Description: Single user ID for personal use
+  # Cognito Callback/Logout 用（末尾 / あり）
+  FrontendBaseUrl:
+    Type: String
+    Description: "フロントの公開URL（例: https://dxxxxx.cloudfront.net/）※末尾スラッシュ必須"
+  # CORS 用（オリジン＝末尾 / なし）
+  FrontendOrigin:
+    Type: String
+    Description: "フロントのオリジン（例: https://dxxxxx.cloudfront.net）※末尾スラッシュなし"
+  CognitoDomainPrefix:
+    Type: String
+    Description: "Cognito Hosted UI のドメイン接頭辞（グローバル一意）"
 
 Resources:
+  # ===== DynamoDB =====
   TodoTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -41,17 +48,27 @@ Resources:
         AttributeName: expires_at
         Enabled: true
 
+  # ===== HTTP API (JWTオーソライザ/CORS) =====
   HttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
       CorsConfiguration:
-        AllowOrigins: ["*"]
+        # ここは「オリジン」なので末尾スラッシュなしの FrontendOrigin を使う
+        AllowOrigins:
+          - !Ref FrontendOrigin
+          - http://localhost:5500
         AllowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
-        AllowHeaders: ["*"]
+        AllowHeaders: ["Authorization", "Content-Type"]
       Auth:
-        EnableIamAuthorizer: true
-        DefaultAuthorizer: AWS_IAM # ← ここがポイント（IAM ではなく AWS_IAM）
+        Authorizers:
+          CognitoJwt:
+            IdentitySource: "$request.header.Authorization"
+            JwtConfiguration:
+              Issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+              Audience:
+                - !Ref UserPoolClient
 
+  # ===== Lambda: メインAPI =====
   ApiFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -59,29 +76,55 @@ Resources:
       Handler: handler.handler
       Environment:
         Variables:
-          ALLOWED_ORIGINS: "http://localhost:5500,https://$CfDomain"
+          # Lambda の CORS 判定用（カンマ区切り、オリジンは / なし）
+          ALLOWED_ORIGINS: !Sub "http://localhost:5500,${FrontendOrigin}"
           TABLE_NAME: !Ref TodoTable
-          USER_ID:
-            !Ref UserId
-            # 追加↓（SES設定）
-          EMAIL_FROM: "m.daisuke1110@gmail.com" # SESで検証済みの送信元に置き換え
-          EMAIL_TO: "m.daisuke1110@outlook.jp" # サンドボックス中は受信側も検証が必要
+          USER_ID: !Ref UserId
+          # SES 送信設定（必要に応じて変更）
+          EMAIL_FROM: "m.daisuke1110@gmail.com"
+          EMAIL_TO: "m.daisuke1110@outlook.jp"
           SES_REGION: "ap-northeast-3"
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TodoTable
         - Statement:
             - Effect: Allow
-              Action:
-                - ses:SendEmail
+              Action: ses:SendEmail
               Resource: "*"
       Events:
-        AnyRoute:
+        # OPTIONS には Authorizer を付けないため、アプリで使う4メソッドだけに限定
+        GetProxy:
           Type: HttpApi
           Properties:
             ApiId: !Ref HttpApi
             Path: /{proxy+}
-            Method: ANY
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+        PostProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: POST
+            Auth:
+              Authorizer: CognitoJwt
+        PatchProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: PATCH
+            Auth:
+              Authorizer: CognitoJwt
+        DeleteProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoJwt
 
   ApiFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -89,6 +132,7 @@ Resources:
       LogGroupName: !Sub "/aws/lambda/${ApiFunction}"
       RetentionInDays: 30
 
+  # ===== Lambda: 期限チェック（スケジュール） =====
   DueCheck:
     Type: AWS::Serverless::Function
     Properties:
@@ -115,9 +159,77 @@ Resources:
       LogGroupName: !Sub "/aws/lambda/${DueCheck}"
       RetentionInDays: 30
 
+  # ===== Cognito（UserPool/Client/Domain）=====
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: TodoAppUserPool
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireUppercase: false
+          RequireNumbers: true
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: WebClient
+      GenerateSecret: false
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email]
+      SupportedIdentityProviders: [COGNITO]
+      # ここは「完全一致」させるため FrontendBaseUrl（末尾 / あり）
+      CallbackURLs:
+        - !Ref FrontendBaseUrl
+      LogoutURLs:
+        - !Ref FrontendBaseUrl
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      Domain: !Ref CognitoDomainPrefix
+
 Outputs:
   ApiEndpoint:
-    Description: Invoke URL (HTTP API - requires AWS SigV4)
+    Description: Invoke URL (HTTP API)
     Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+
   TableName:
     Value: !Ref TodoTable
+
+  CognitoUserPoolId:
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolId"
+
+  CognitoUserPoolClientId:
+    Value: !Ref UserPoolClient
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolClientId"
+
+  CognitoHostedDomainUrl:
+    Value: !Sub "https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com"
+    Export:
+      Name: !Sub "${AWS::StackName}-HostedDomainUrl"

@@ -4,25 +4,26 @@ import uuid
 import time
 from datetime import datetime, timezone
 from typing import List, Dict
+from decimal import Decimal
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import boto3
 from botocore.exceptions import ClientError
-from decimal import Decimal
 
 # ==== 設定 ====
-ALLOWED = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5500").split(",")
+# 例: "http://localhost:5500,https://dvj7er4qsb0m.cloudfront.net"
+ALLOWED = [
+    s.strip()
+    for s in os.environ.get("ALLOWED_ORIGINS", "http://localhost:5500").split(",")
+    if s.strip()
+]
 TABLE_NAME = os.environ.get("TABLE_NAME", "todo")
-USER_ID = os.environ.get("USER_ID", "me")  # 個人利用なので固定
 
-# 追加: SES設定（送信元/宛先は環境変数に）
-EMAIL_FROM = os.environ.get("EMAIL_FROM")  # 例: no-reply@example.com（SESで検証済み）
-EMAIL_TO = os.environ.get(
-    "EMAIL_TO"
-)  # 例: you@example.com（サンドボックス中は受信側も検証）
+# SES（使わないなら空でOK）
+EMAIL_FROM = os.environ.get("EMAIL_FROM")
+EMAIL_TO = os.environ.get("EMAIL_TO")
 SES_REGION = os.environ.get("SES_REGION", "ap-northeast-3")
-# 一日おきにメール送信
 NOTIFY_INTERVAL_HOURS = int(os.environ.get("NOTIFY_INTERVAL_HOURS", "0"))
 
 # ==== AWS ====
@@ -30,23 +31,33 @@ dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(TABLE_NAME)
 ses = boto3.client("ses", region_name=SES_REGION)
 
+
+def _to_jsonable(v):
+    if isinstance(v, list):
+        return [_to_jsonable(x) for x in v]
+    if isinstance(v, dict):
+        return {k: _to_jsonable(val) for k, val in v.items()}
+    if isinstance(v, Decimal):
+        return int(v) if v == v.to_integral_value() else float(v)
+    return v
+
+
 # ==== Flask ====
 app = Flask(__name__)
-# CORS はここ「だけ」で設定（後段の after_request は不要）
 CORS(
     app,
     resources={r"/*": {"origins": ALLOWED}},
     methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
+# ---- helpers ----
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def parse_iso(s: str) -> datetime:
-    """ISO 8601文字列をdatetimeへ。'Z'にも対応。"""
     return datetime.fromisoformat(s.replace("Z", "+00:00"))
 
 
@@ -54,8 +65,15 @@ def is_overdue(due_str: str, ref: datetime) -> bool:
     try:
         return parse_iso(due_str).astimezone(timezone.utc) < ref
     except Exception:
-        # 形式不正は期限判定不可としてFalse扱い（ログに出したければここでprintなど）
         return False
+
+
+def current_user_id() -> str:
+    """
+    handler.py が JWT の sub を X-User-Sub に入れて渡してくる。
+    万一無い場合は開発用に環境変数 USER_ID（既定 'me'）へフォールバック。
+    """
+    return request.headers.get("X-User-Sub") or os.environ.get("USER_ID", "me")
 
 
 # ---------- Health ----------
@@ -67,42 +85,38 @@ def health():
 # ---------- List ----------
 @app.get("/tasks")
 def list_tasks():
+    user_id = current_user_id()
     resp = table.query(
-        KeyConditionExpression=boto3.dynamodb.conditions.Key("user_id").eq(USER_ID),
-        ConsistentRead=True,  # ← これを追加！
+        KeyConditionExpression=boto3.dynamodb.conditions.Key("user_id").eq(
+            current_user_id()
+        ),
+        ConsistentRead=True,
     )
     items = resp.get("Items", [])
-    # ▼ sort（数値）が小さい順に並べる。無いものは0扱い
     items = sorted(items, key=lambda x: float(x.get("sort", 1e18)))
-    return jsonify(items)
+    return jsonify(_to_jsonable(items))  # ← ここを変える
 
 
 # ---------- Create ----------
 @app.post("/tasks")
 def create_task():
+    user_id = current_user_id()
     body = request.get_json(force=True) or {}
     task_id = str(uuid.uuid4())
     item = {
-        "user_id": USER_ID,
+        "user_id": user_id,
         "task_id": task_id,
         "title": body.get("title", ""),
         "status": body.get("status", "open"),
         "updated_at": now_iso(),
-        # ▼ 並び順: “下に追加”したいので現在ミリ秒を採用
         "sort": int(time.time() * 1000),
     }
-    # 追加: 詳細
-    details = body.get("details")
-    if details:
-        item["details"] = details
-    # None/空は保存しない（DynamoDB は None を受け付けない）
-    due = body.get("due_date")
-    if due:
-        item["due_date"] = due
-    # 追加: 親
-    parent = body.get("parent_id")
-    if parent:
-        item["parent_id"] = parent
+    if body.get("details"):
+        item["details"] = body["details"]
+    if body.get("due_date"):
+        item["due_date"] = body["due_date"]
+    if body.get("parent_id"):
+        item["parent_id"] = body["parent_id"]
 
     table.put_item(Item=item)
     return jsonify(item), 201
@@ -113,17 +127,14 @@ def _update_spec_from_payload(payload: dict):
     set_expr, remove_expr, names, values = [], [], {}, {}
 
     def add_set(k, v):
-        # ▼ sort は DynamoDB の Number 型にしたいので Decimal に変換
         if k == "sort" and v is not None:
-            v = Decimal(str(v))  # 小数も安全に扱える
+            v = Decimal(str(v))
         set_expr.append(f"#_{k} = :{k}")
         names[f"#_{k}"] = k
         values[f":{k}"] = v
 
-    # --- 更新対象キーをループ ---
     for k in ("title", "status", "due_date", "parent_id", "details", "sort"):
         if k in payload:
-            # これら3つは空(None/"")なら属性自体を削除（REMOVE）
             if k in ("due_date", "parent_id", "details") and payload[k] in (None, ""):
                 remove_expr.append(f"#_{k}")
                 names[f"#_{k}"] = k
@@ -133,7 +144,6 @@ def _update_spec_from_payload(payload: dict):
     if not set_expr and not remove_expr:
         return None
 
-    # 更新時刻は毎回上書き
     add_set("updated_at", now_iso())
 
     parts = []
@@ -146,13 +156,13 @@ def _update_spec_from_payload(payload: dict):
         "UpdateExpression": " ".join(parts),
         "ExpressionAttributeNames": names,
         "ExpressionAttributeValues": values,
-        # （任意）存在チェックを入れたい場合は呼び出し側で ConditionExpression を足す
     }
 
 
 # ---------- Update ----------
 @app.patch("/tasks/<task_id>")
 def update_task(task_id):
+    user_id = current_user_id()
     body = request.get_json(force=True) or {}
     spec = _update_spec_from_payload(body)
     if not spec:
@@ -160,11 +170,11 @@ def update_task(task_id):
 
     try:
         resp = table.update_item(
-            Key={"user_id": USER_ID, "task_id": task_id},
+            Key={"user_id": user_id, "task_id": task_id},
             ReturnValues="ALL_NEW",
             **spec,
         )
-        return jsonify(resp["Attributes"])
+        return jsonify(_to_jsonable(resp["Attributes"]))  # ← ここを変える
     except ClientError as e:
         if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
             return jsonify({"message": "not found"}), 404
@@ -174,22 +184,15 @@ def update_task(task_id):
 # ---------- Delete ----------
 @app.delete("/tasks/<task_id>")
 def delete_task(task_id):
-    table.delete_item(Key={"user_id": USER_ID, "task_id": task_id})
+    user_id = current_user_id()
+    table.delete_item(Key={"user_id": user_id, "task_id": task_id})
     return "", 204
 
 
 # ---------- Bulk ----------
 @app.post("/tasks/bulk")
 def bulk_tasks():
-    """
-    body:
-    { "ops": [
-        {"id":"<id>","action":"delete"},
-        {"id":"<id>","action":"patch","payload":{"status":"done"}},
-        {"id":"<id>","action":"status","payload":"open"},
-        {"id":"<id>","action":"patch","payload":{"due_date":""}}  # due_date を削除
-    ] }
-    """
+    user_id = current_user_id()
     body = request.get_json(force=True) or {}
     ops = body.get("ops", [])
     if not isinstance(ops, list):
@@ -206,7 +209,7 @@ def bulk_tasks():
                 raise ValueError("invalid op")
 
             if act == "delete":
-                table.delete_item(Key={"user_id": USER_ID, "task_id": tid})
+                table.delete_item(Key={"user_id": user_id, "task_id": tid})
                 results.append({"i": i, "id": tid, "action": "delete", "ok": True})
                 continue
 
@@ -219,7 +222,7 @@ def bulk_tasks():
                 raise ValueError("no fields")
 
             table.update_item(
-                Key={"user_id": USER_ID, "task_id": tid},
+                Key={"user_id": user_id, "task_id": tid},
                 ReturnValues="NONE",
                 **spec,
             )
@@ -232,13 +235,8 @@ def bulk_tasks():
 
 # ---------- Overdue Mail Notify ----------
 def _collect_overdue_targets(items: List[Dict]) -> List[Dict]:
-    """
-    status が open/overdue かつ due_date が現在(UTC)より過去。
-    さらに、未通知 もしくは 最終通知から NOTIFY_INTERVAL_HOURS 以上経過しているものを抽出。
-    """
     now = datetime.now(timezone.utc)
     targets = []
-
     for it in items:
         due = it.get("due_date")
         if not due:
@@ -248,24 +246,17 @@ def _collect_overdue_targets(items: List[Dict]) -> List[Dict]:
         if not is_overdue(due, now):
             continue
         targets.append(it)
-
     return targets
 
 
 def _send_overdue_email(targets: List[Dict]) -> None:
-    """Amazon SESで1通にまとめて送信"""
     if not EMAIL_FROM or not EMAIL_TO:
-        # 必須設定がない場合は送信せずに例外
         raise RuntimeError("EMAIL_FROM/EMAIL_TO environment variables are required.")
-
-    lines = []
-    for t in targets:
-        title = t.get("title", "(no title)")
-        due = t.get("due_date", "-")
-        lines.append(f"- {title} (due: {due})")
-
+    lines = [
+        f"- {t.get('title','(no title)')} (due: {t.get('due_date','-')})"
+        for t in targets
+    ]
     body_text = "以下のタスクが期限超過です：\n\n" + "\n".join(lines)
-
     ses.send_email(
         Source=EMAIL_FROM,
         Destination={"ToAddresses": [EMAIL_TO]},
@@ -277,14 +268,13 @@ def _send_overdue_email(targets: List[Dict]) -> None:
     )
 
 
-def _mark_notified(targets: List[Dict]) -> int:
-    """通知済みフラグとstatus=overdueを付与"""
+def _mark_notified(user_id: str, targets: List[Dict]) -> int:
     now_s = now_iso()
     cnt = 0
     for it in targets:
         try:
             table.update_item(
-                Key={"user_id": USER_ID, "task_id": it["task_id"]},
+                Key={"user_id": user_id, "task_id": it["task_id"]},
                 UpdateExpression="SET #s=:s, #n=:n, #u=:u",
                 ExpressionAttributeNames={
                     "#s": "status",
@@ -295,56 +285,30 @@ def _mark_notified(targets: List[Dict]) -> int:
             )
             cnt += 1
         except Exception:
-            # 個別失敗はスキップ（必要ならCloudWatchに出力）
             pass
     return cnt
 
 
 @app.post("/notify/overdue")
 def notify_overdue():
-    """
-    期限超過タスクをまとめてメール通知し、通知済みフラグを立てる。
-    - 手動トリガー用のHTTPエンドポイント。
-    - 本番はEventBridge SchedulerでこのURLを叩くか、別Lambdaでduecheckと同様の処理を実行する運用を推奨。
-    """
-    # 全タスク取得（規模が大きくなればGSIでdue_date範囲クエリへ移行）
+    user_id = current_user_id()
     resp = table.query(
-        KeyConditionExpression=boto3.dynamodb.conditions.Key("user_id").eq(USER_ID)
+        KeyConditionExpression=boto3.dynamodb.conditions.Key("user_id").eq(user_id)
     )
     items = resp.get("Items", [])
-
     targets = _collect_overdue_targets(items)
     if not targets:
         return jsonify({"sent": 0, "notified": 0, "message": "no overdue tasks"}), 200
-
     try:
         _send_overdue_email(targets)
     except Exception as e:
         return jsonify({"sent": 0, "error": str(e)}), 500
-
-    updated = _mark_notified(targets)
+    updated = _mark_notified(user_id, targets)
     return jsonify({"sent": 1, "target_count": len(targets), "notified": updated}), 200
 
 
-# どのパスにもマッチする OPTIONS（プリフライト）レスポンス
+# プリフライト
 @app.route("/", methods=["OPTIONS"])
 @app.route("/<path:path>", methods=["OPTIONS"])
 def cors_preflight(path=None):
-    # 204 No Content を返せばOK。flask-cors が CORS ヘッダを付けてくれる。
     return ("", 204)
-
-
-@app.after_request
-def add_cors_headers(resp):
-    origin = request.headers.get("Origin")
-    allowed = [
-        s.strip() for s in os.environ.get("ALLOWED_ORIGINS", "").split(",") if s.strip()
-    ]
-    if "*" in allowed or (origin and origin in allowed):
-        resp.headers["Access-Control-Allow-Origin"] = origin or "*"
-    else:
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-
-    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,PATCH,DELETE,OPTIONS"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    return resp
