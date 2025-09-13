@@ -205,6 +205,33 @@
         box-sizing: border-box;
         border-radius: calc(var(--radius) - 2px);
       }
+      .search-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin: 8px 0 12px;
+      }
+      #search {
+        flex: 1;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--line, #1f2937);
+        background: var(--card, #0f172a);
+        color: var(--text, #e5e7eb);
+        outline: none;
+      }
+      #search:focus {
+        box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.25);
+      }
+      .search-hint {
+        font-size: 12px;
+        color: var(--muted, #9ca3af);
+      }
+      mark {
+        background: #fde68a;
+        padding: 0 2px;
+        border-radius: 2px;
+      }
     </style>
 
     <!-- Amplify (UMD) を必ず自作スクリプトより前に読み込む -->
@@ -233,6 +260,16 @@
           <button id="logoutBtn" class="btn" style="display: none">
             ログアウト
           </button>
+        </div>
+        <!-- ヘッダー等の見出しの近くに置く -->
+        <div class="search-row">
+          <input
+            id="search"
+            type="search"
+            placeholder="タスクを検索（タイトル・詳細）"
+            autocomplete="off"
+          />
+          <span class="search-hint">Enter不要・入力で即検索</span>
         </div>
       </header>
 
@@ -263,6 +300,16 @@
           responseType: "code",
         },
       });
+
+      // === state を一度だけ用意（再定義で上書きされないように） ===
+      if (!window.state) {
+        window.state = {
+          tasks: [],
+          q: "",
+          filters: { status: "all", due: "all", tag: null, priority: "all" },
+        };
+      }
+      const state = window.state;
 
       // v4/v6 どちらでも動くヘルパ
       async function fetchSessionSafe() {
@@ -506,7 +553,14 @@
       function render() {
         const list = $("#list");
         list.innerHTML = "";
-        const roots = tasks.filter((t) => !t.parent_id);
+
+        // ★ ここが重要：データ源は state.tasks、さらに state.q で検索絞り込み
+        const all = state.tasks || [];
+        const searched = all.filter((t) => matchSearch(t, state.q));
+
+        // 親を持たないタスク（ルート）だけ表示
+        const roots = searched.filter((t) => !t.parent_id);
+
         for (const it of roots) {
           const row = el("div", { className: "row" });
           row.dataset.id = it.task_id;
@@ -533,10 +587,8 @@
             });
             await refresh();
           };
-          const titleView = el("div", {
-            className: "titleText",
-            textContent: it.title,
-          });
+          const titleView = el("div", { className: "titleText" });
+          titleView.innerHTML = highlight(it.title || "", state.q);
           const due = el("div", { className: "muted" });
           if (it.due_date) due.textContent = fmt(it.due_date);
           const badge = el("span", {
@@ -586,7 +638,7 @@
             const v = titleEdit.value.trim();
             if (!v || v === it.title) return;
             await patchTask(it.task_id, { title: v });
-            titleView.textContent = v;
+            titleView.innerHTML = highlight(v, state.q);
             it.title = v;
           };
           titleEdit.addEventListener("keydown", (e) => {
@@ -671,15 +723,17 @@
             className: "chip danger",
             textContent: "タスクを削除",
           });
+
+          // ★ ここも重要：rollback 用配列も state.tasks に
           delBtn.onclick = async () => {
             if (!confirm("このタスクを削除しますか？")) return;
-            const prev = tasks.slice();
-            tasks = tasks.filter((t) => t.task_id !== it.task_id);
+            const prev = state.tasks.slice();
+            state.tasks = state.tasks.filter((t) => t.task_id !== it.task_id);
             render();
             try {
               await delTask(it.task_id);
             } catch {
-              tasks = prev;
+              state.tasks = prev;
               render();
               alert("削除に失敗しました");
             }
@@ -691,7 +745,9 @@
           row.append(det);
           list.append(row);
         }
-        if (!tasks.length && $("#who").textContent === "未ログイン") {
+
+        // ★ 空表示の条件も state.tasks に
+        if (!state.tasks.length && $("#who").textContent === "未ログイン") {
           const empty = el("div", {
             className: "muted",
             style: "padding:8px 2px;",
@@ -730,20 +786,24 @@
         await updateAuthUI();
         const token = await getIdToken();
         if (!token) {
-          tasks = [];
+          state.tasks = [];
+          tasks = state.tasks; // ← DnD 用の別名を同期
           render();
           return;
         }
         try {
-          tasks = await listTasks();
-          if (tasks.some((t) => t.sort == null)) {
+          const list = await listTasks(); // API呼び出し（Bearer付き）
+          // sortが無いデータは再採番
+          if (Array.isArray(list) && list.some((t) => t.sort == null)) {
             await reindexSorts();
-            tasks = await listTasks();
           }
+          state.tasks = Array.isArray(list) ? list : [];
+          tasks = state.tasks; // ← ここで tasks を常に同じ配列オブジェクトに
         } catch (e) {
           console.error(e);
           alert("APIエラー: " + (e?.message || e));
-          tasks = [];
+          state.tasks = [];
+          tasks = state.tasks;
         }
         render();
       }
@@ -772,6 +832,64 @@
           document.getElementById("addBtn").click();
         }
       });
+      // デバッグ用（任意）。state はこの行より前で定義済みにする。
+      window.state = state;
+
+      // 入力イベントを“デバウンス”して 150ms 後に1回だけ反映
+      function debounce(fn, ms = 150) {
+        let t;
+        return (...args) => {
+          clearTimeout(t);
+          t = setTimeout(() => fn(...args), ms);
+        };
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const box = document.querySelector("#search");
+        if (!box) return; // ← 検索ボックスが無い場合の安全策
+        const onType = debounce((e) => {
+          state.q = e.target.value.trim();
+          render(); // 検索反映
+        }, 150);
+        box.addEventListener("input", onType);
+      });
+
+      // 日本語の全角/半角ゆれを吸収して大小文字も無視
+      function normalizeJP(s) {
+        return (s || "").normalize("NFKC").toLowerCase();
+      }
+
+      // タイトル or 詳細の部分一致
+      function matchSearch(task, q) {
+        if (!q) return true;
+        const needle = normalizeJP(q);
+        return (
+          normalizeJP(task.title).includes(needle) ||
+          normalizeJP(task.details).includes(needle)
+        );
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(
+          /[&<>"']/g,
+          (m) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            }[m])
+        );
+      }
+      function highlight(text, q) {
+        const safe = escapeHtml(text ?? ""); // ← 本文を先に無害化
+        if (!q) return safe;
+
+        const esc = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); // クエリ側も無害化
+        const re = new RegExp(`(${esc})`, "ig");
+        return safe.replace(re, "<mark>$1</mark>"); // ← ここで <mark> を差し込む
+      }
     </script>
   </body>
 </html>
